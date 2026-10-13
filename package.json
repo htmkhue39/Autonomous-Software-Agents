@@ -1,0 +1,37 @@
+{
+  "name": "autonomous-software-agents",
+  "version": "1.0.0",
+  "description": "BDI autonomous agent for Deliveroo.js - ASA course, UniTN",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "node --test",
+    "start": "node src/index.js",
+    "observe": "node src/observe.js",
+    "typecheck": "npx -y -p typescript tsc -p jsconfig.json",
+    "path": "node src/follow-path.js",
+    "deliver": "node src/pickup-deliver.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/htmkhue39/Autonomous-Software-Agents.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/htmkhue39/Autonomous-Software-Agents/issues"
+  },
+  "homepage": "https://github.com/htmkhue39/Autonomous-Software-Agents#readme",
+  "dependencies": {
+    "@unitn-asa/deliveroo-js-sdk": "^1.3.10",
+    "@unitn-asa/pddl-client": "^1.7.7",
+    "dotenv": "^18.0.7",
+    "socket.io-client": "^4.8.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5"
+  }
+}

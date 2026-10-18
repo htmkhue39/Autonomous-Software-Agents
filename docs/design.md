@@ -1,24 +1,115 @@
 # Deliveroo.js BDI agent: design
 
-Date: 2026-10-13. Requirements: [project_requirement.md](project_requirement.md).
+Updated: 2026-10-18. Requirements: [project_requirement.md](project_requirement.md).
 Server facts and open items: [server_notes.md](server_notes.md).
 Plan: [implementation_plan.md](implementation_plan.md).
 
-## Decisions
+## Key ideas
 
-| Topic | Decision |
+The words used in the rest of this document.
+
+| Term | Meaning | In this game |
+|---|---|---|
+| **Beliefs** | What the agent thinks is true. They can be out of date or wrong. | "A parcel worth about 18 is at (4,2)." "Tile (2,0) is a wall." |
+| **Desires (options)** | Things the agent could do right now, each with a score. | Pick up a given parcel, deliver what it carries, explore. |
+| **Intention** | The one option the agent has committed to and is working on. | "I am going to pick up the parcel at (4,2)." |
+| **Plan** | A recipe that achieves an intention. | "Walk to the tile, then pick up." |
+| **Agent loop** | The cycle repeated all game long: sense → update beliefs → list and score options → keep or switch intention → act. | One step per move. |
+| **A\*** | Finds the shortest route on a grid. It tries first the tiles whose "steps so far plus a straight-line guess of steps left" is smallest. | Route around walls and other agents. |
+| **PDDL** | A language for describing a planning problem to a general solver: a domain (the rules, written once) and a problem (this situation, rebuilt each time). The solver returns a sequence of actions. | "Agent at (3,1), goal (7,4)" → "right, right, up…". |
+| **Directive** | An instruction from the user, checked and turned into a goal or a constraint for the BDI agent. | "Go to (0,0)", "ignore parcels worth less than 20". |
+
+## Design decisions and reasons
+
+Each decision lists the options that were considered, the choice, and the
+reason in one line.
+
+### 1. Commitment: when to reconsider the intention
+
+- Considered: never mid-way (finish first); always switch to the best
+  option; switch only when a new option is clearly better.
+- **Chosen: switch only when a new option is clearly better**, meaning
+  better by a margin (starting at 20%, and at least one point). The
+  margin is tuned in live runs.
+- **Why:** it avoids changing its mind back and forth over small
+  differences, but still switches when something is clearly worth it.
+
+### 2. Scoring: how options are compared
+
+- Considered: nearest parcel first; most valuable parcel first; the reward
+  expected at delivery.
+- **Chosen: the reward expected at delivery.** Every parcel involved (the
+  ones carried and the one to pick up) loses value for each decay interval
+  the whole trip takes, down to zero; the score is the sum. Delivering is
+  scored the same way, so the agent decides by itself when to stop
+  collecting and deliver.
+- **Why:** it accounts for both reward and distance, and so for time, which
+  is what makes parcels lose value.
+
+### 3. Exploring: what to do when there is nothing to pick up
+
+- Considered: random walk; farthest spawn tile; spawn tile seen longest
+  ago.
+- **Chosen: the reachable spawn tile seen longest ago.** Beliefs keep, for
+  each tile, the last time it was in view. Exploring scores zero, so any
+  real option replaces it.
+- **Why:** it covers the whole map systematically.
+
+### 4. Moving: how a route is followed
+
+- Considered: plan the whole route once and follow it; plan again before
+  every step.
+- **Chosen: plan again with A\* before every step**, using current beliefs,
+  and take only the first step.
+- **Why:** it always uses the latest information. A\* on a 20 × 20 map takes
+  well under a millisecond, so the repeated work costs nothing.
+
+### 5. Failed moves: how the agent recovers
+
+- Considered: retry the same move; block the tile briefly and plan again;
+  give up the intention at once.
+- **Chosen: block the tile for a short time (about 2 s) and plan again.**
+  After a few failures (about 3) the intention is dropped and the agent
+  deliberates again. A move the server does not answer in time counts as a
+  failed move.
+- **Why:** the agent learns from the failure (it becomes a belief) and
+  finds a detour, instead of paying a point for every retry.
+
+### 6. External planner: what PDDL plans
+
+- Considered: movement only; the whole task (pickups and deliveries in
+  order); both.
+- **Chosen: movement only.** PDDL replaces A\* for routes when the mover
+  setting says so. Because the solver is slow (an internet call taking up
+  to seconds), the PDDL mover keeps its plan and asks again only after a
+  failed move or a change of target. If the solver fails or takes longer
+  than 5 s, A\* is used for that route.
+- **Why:** deliberation decides *what* to do and planners decide *how* to
+  get there, so the two never compete. Problems stay small and fast, the
+  agent never stalls, and A\* and PDDL can be compared fairly on the same
+  agent.
+
+### Part 2 decisions: not yet discussed
+
+The Part 2 design below is kept from the first version and still has to be
+gone through step by step: where instructions come from (terminal only, or
+in-game chat too), which goals and constraints to support, whether the LLM
+agent runs in the same program or as a separate game agent, and which LLM
+to use.
+
+### Fixed choices
+
+| Topic | Choice |
 |---|---|
 | Language | Plain JavaScript, ES modules, JSDoc types |
-| Game client | `@unitn-asa/deliveroo-js-sdk` (1.3.10): `DjsConnect(host, token, name)` returning a `DjsClientSocket`. Needs `socket.io-client` installed alongside. |
-| Planner client | `@unitn-asa/pddl-client` (1.7.7): `onlineSolver(domain, problem)`, default host `solver.planning.domains:5001` |
-| PDDL role | Hybrid plan library: A* mover by default, PDDL mover selectable by flag, A* fallback on solver failure |
-| Part 2 | LLM agent turns user instructions into validated directives (goals and constraints) that the BDI agent deliberates over |
-| LLM provider | Open; isolated behind one file so it can be swapped |
-| Out of scope | Two-agent team, opponent modelling, map-specific tuning, report |
+| Game client | `@unitn-asa/deliveroo-js-sdk` 1.3.10 with `socket.io-client` |
+| Planner client | `@unitn-asa/pddl-client` 1.7.7, online solver at `solver.planning.domains:5001` |
+| LLM provider | Open; only one file talks to it, so it can be swapped |
+| Out of scope | Two-agent team, modelling opponents, tuning for one map, the report |
 
 ## Architecture
 
-One Node process per agent running sense → believe → deliberate → act:
+One Node process per agent, running sense → believe → deliberate → act:
 
 ```
 server events ─> Beliefs ─> Option generation ─> Intention revision ─> Plan ─> actions
@@ -32,99 +123,70 @@ server events ─> Beliefs ─> Option generation ─> Intention revision ─> P
 
 | Unit | Responsibility | Depends on |
 |---|---|---|
-| `config.js` | Server URL, token, mover choice (`astar`/`pddl`), LLM settings, tuning constants. Read from env. | none |
-| `client.js` | Thin wrapper over the SDK: connect with `DjsConnect`, forward `onConfig`, `onMap`, `onTile`, `onYou`, `onSensing` to beliefs, expose `move`, `pickup`, `putdown`. The only file that imports the SDK. | SDK |
-| `beliefs/map.js` | Tiles by type: `0` wall, `1` parcel spawner, `2` delivery, `3` walkable, `4` base, `5`/`5!` crate tiles, arrows `← ↑ → ↓` directional. Neighbour lookup that respects directional tiles. Temporary "blocked" marks with expiry. | none |
-| `beliefs/parcels.js` | Known parcels: position, reward, carrier, last seen. Decay estimate from `config.GAME.parcels.decaying_event`. A parcel is removed when its tile is in `sensing.positions` but the parcel is absent, or when its estimated reward reaches zero. | config |
+| `config.js` | Server address, token, mover choice (A\* or PDDL), LLM settings, tuning values. Read from `.env`. | none |
+| `client.js` | Thin wrapper over the SDK: connects, passes server events on to beliefs, and offers move, pick up and put down. The only file that uses the SDK. | SDK |
+| `beliefs/map.js` | Tiles by type: wall, parcel spawner, delivery, walkable, base, crate tiles, one-way arrows. Neighbours that respect arrows. Tiles blocked for a while after a failed move. When each tile was last in view (for exploring). | none |
+| `beliefs/parcels.js` | Known parcels: position, reward, carrier, last seen. Value estimated from the server's decay interval. A parcel is forgotten when its tile is in view without it, or when its value reaches zero. | config |
 | `beliefs/agents.js` | Other agents' last known position and time. | none |
-| `beliefs/index.js` | Aggregate `Beliefs` object with `me`, the three stores, and update methods called by `client.js` events. | above |
-| `deliberation/utility.js` | Expected reward of an option: sum of carried and target parcel values after decay over the path length to pickup then nearest delivery. Pure function. | beliefs, astar |
-| `deliberation/options.js` | Generates options (`pickup(parcel)`, `deliver`, `explore`) and returns them scored. | utility |
-| `intentions/intention.js` | One intention: tries applicable plans from the library in order, can be stopped. | plans |
-| `intentions/revision.js` | The agent loop. Holds the current intention; on belief change, replaces it when a new option beats it by a margin (to avoid thrashing). | options, intention |
-| `plans/` | `GoPickUp`, `GoDeliver`, `Explore`, `MoveAStar`, `MovePddl`. Each has `isApplicableTo(intention)` and `execute()`; sub-goals go through the same intention mechanism. | planning, client |
-| `planning/astar.js` | A* on the belief map, treating other agents and blocked marks as obstacles. Pure function. | map |
-| `planning/pddl/domain.pddl` | Predicates `at`, `adjacent-up/down/left/right` (or one `connected`), actions `move-*`. Movement only. | none |
-| `planning/pddl/problem.js` | Builds the PDDL problem from the belief map, current position and goal tile. | map |
-| `planning/pddl/solve.js` | Sends domain and problem to the online solver with a timeout; maps the returned steps to move directions. | pddl-client |
-| `index.js` | Wires everything and starts the loop. | all |
+| `beliefs/index.js` | All beliefs together: the agent itself, the map, parcels, agents. Updated by server events. | above |
+| `deliberation/utility.js` | Reward expected at delivery (decision 2). | none |
+| `deliberation/options.js` | Lists the options (pick up a parcel, deliver, explore) with their scores. | utility, astar |
+| `intentions/intention.js` | One intention: runs the plan that handles it, can be stopped. | plans |
+| `intentions/revision.js` | The agent loop. Keeps the current intention and replaces it when a new option is clearly better (decision 1). | options, intention |
+| `plans/` | Go to, pick up, deliver, explore, and step-by-step movement with either mover (decisions 4, 5). | planning, client |
+| `planning/astar.js` | A\* on the believed map; other agents and blocked tiles are obstacles. | map |
+| `planning/pddl/domain.pddl` | Movement domain: the agent is at a tile, tiles connect in four directions, one move action per direction. | none |
+| `planning/pddl/problem.js` | Builds the PDDL problem from the believed map, the agent's tile and the goal tile. | map |
+| `planning/pddl/solve.js` | Sends domain and problem to the online solver with a timeout, and turns the reply into directions. | pddl-client |
+| `index.js` | Wires everything together and starts the loop. | all |
 
-### Key behaviours
-
-- **Intention revision.** Options are regenerated on every parcel-sensing
-  event and after each completed or failed intention. The current intention
-  is replaced only when the best new option exceeds it by a configurable
-  margin.
-- **Deliver decision.** `deliver` is scored like any other option, so the
-  agent keeps collecting while nearby parcels are worth more than the decay
-  it incurs, and delivers otherwise.
-- **Explore.** With no known parcels, head for the spawn tile seen longest
-  ago.
-- **PDDL scope.** PDDL plans the path for a single move intention. Keeping
-  the domain to movement keeps problems small and solver calls short.
-
-### Part 2: LLM agent
+### Part 2: LLM agent (to be discussed)
 
 | Unit | Responsibility | Depends on |
 |---|---|---|
-| `llm/directives.js` | The directive schema and validator. Goals: `goto(x,y)`, `pickup(parcelId)`, `deliverNow`, `pause`, `resume`. Constraints: `avoidArea(rect)`, `stayInArea(rect)`, `minParcelReward(n)`, `maxCarried(n)`, `clear`. Rejects anything outside the schema or off the map. | map |
-| `llm/provider.js` | The only file that calls the LLM API. Takes a system prompt, the conversation and the tool schema; returns structured output. | LLM SDK |
-| `llm/agent.js` | The LLM agent: builds the prompt from a compact belief summary (map size, my position, carried parcels, active directives), asks the provider for directives, validates them, sends them to the BDI agent, and turns status reports into a reply for the user. | provider, directives |
+| `llm/directives.js` | The list of allowed directives and their checks. Goals: go to a tile, pick up a parcel, deliver now, pause, resume. Constraints: avoid an area, stay in an area, minimum parcel reward, maximum parcels carried, clear. Rejects anything else, or anything off the map. | map |
+| `llm/provider.js` | The only file that talks to the LLM. Sends the instructions, the conversation and the description of the directive tool; returns structured output. | LLM SDK |
+| `llm/agent.js` | The LLM agent: builds the prompt from a short summary of beliefs, asks for directives, checks them, hands them to the BDI agent, and turns status reports into replies. | provider, directives |
 | `llm/console.js` | Terminal prompt where the user types instructions and reads replies. | agent |
-| `beliefs/directives.js` | Active directives held as beliefs, with the status of each user goal (pending, active, done, failed and why). | none |
+| `beliefs/directives.js` | Active directives held as beliefs, and each user goal's status (pending, active, done, failed and why). | none |
 
 How the BDI agent uses directives:
 
 - **User goals** become options with priority above autonomous ones. They
-  enter the same intention revision, so the agent still replans around
-  obstacles and reports failure if the goal is unreachable.
-- **Constraints** filter option generation (reward threshold, carry limit,
-  area) and mark tiles as forbidden for A* and for the PDDL problem.
+  go through the same intention revision, so the agent still replans
+  around obstacles and reports failure if a goal is unreachable.
+- **Constraints** filter the options (reward threshold, carry limit, area)
+  and forbid tiles for both A\* and PDDL.
 - **Autonomy is kept.** With no directives the agent behaves exactly as in
-  Part 1. The LLM never emits moves.
-- **Latency.** LLM calls happen only when the user types, never inside the
+  Part 1. The LLM never moves the agent.
+- **Speed.** The LLM is called only when the user types, never inside the
   agent loop.
 
-### Failure handling
+## Failure handling
 
 | Failure | Response |
 |---|---|
-| Move returns `false` or times out | Mark the target tile blocked for a short time, replan; drop the intention after N attempts |
-| PDDL solver timeout or error | Fall back to `MoveAStar` for that move, log it |
-| No path | Drop the option, exclude that target for a short time |
-| Parcel gone on arrival | Remove from beliefs, re-deliberate |
-| LLM returns invalid or off-schema output | Reject, do not change directives, tell the user what was not understood |
-| LLM API error or timeout | Keep current directives, agent carries on, report the error in the console |
-| User goal unreachable | Mark failed with reason, report to the user, resume autonomous behaviour |
-| Disconnect | Let the SDK reconnect; beliefs rebuild from fresh sensing |
+| A move fails or is not answered in time | Block the tile briefly and plan again; drop the intention after a few failures (decision 5) |
+| The PDDL solver fails or is too slow | Use A\* for that route and log it (decision 6) |
+| No route | Drop the option; leave that target out for a short time |
+| Parcel gone on arrival | Forget the parcel and deliberate again |
+| The LLM returns something invalid | Reject it, keep the current directives, tell the user what was not understood |
+| The LLM cannot be reached | Keep the current directives; the agent carries on; report it in the console |
+| A user goal cannot be reached | Mark it failed with the reason, tell the user, go back to autonomous behaviour |
+| Disconnected | The SDK reconnects; beliefs rebuild from the events that follow |
 
-### Testing
+## Testing
 
-- Unit tests with `node --test` for the pure logic: A*, utility scoring,
-  parcel decay and expiry, PDDL problem text, directive validation, and the
-  effect of each constraint on option generation.
-- `llm/agent.js` tested with a fake provider returning canned output.
-- Live runs on the game server: A*, PDDL, and instructed (a fixed script of
-  user instructions). Compare score over a fixed duration for A* and PDDL.
+- Unit tests with Node's test runner for everything that does not need the
+  server: the map, parcel decay and expiry, A\*, scoring, options,
+  exploring, movement and plans against a fake game client, intention
+  revision, the PDDL problem, directive checks and the effect of each
+  constraint.
+- The LLM agent is tested with a fake LLM that returns prepared answers.
+- Live runs on the game server: with A\*, with PDDL, and with a fixed list
+  of typed instructions. A\* and PDDL scores are compared over the same
+  time on the same map.
 
-## Build roadmap
+## Build order
 
-Each milestone is runnable and demonstrable on its own.
-
-1. **Connect and observe.** `config.js`, `client.js`; log every event. This
-   is where the open items in [server_notes.md](server_notes.md) get answered.
-2. **Beliefs.** Map, parcels, agents, `me`; unit tests for decay and expiry.
-3. **A\* and blind agent.** `astar.js` with tests; agent walks to the nearest
-   parcel and nearest delivery tile with no scoring.
-4. **Deliberation and revision.** Utility, options, intention loop with
-   replacement margin. This completes the core of Part 1.
-5. **Robustness.** The failure-handling table above.
-6. **PDDL mover.** Domain, problem builder, solver call, fallback, `MOVER=pddl`
-   flag. This completes Part 1 (external planner).
-7. **Directives in the BDI agent.** Schema, validator, directive beliefs,
-   user-goal options, constraint filters, forbidden tiles in both movers.
-   Driven by hand-written directives, no LLM yet.
-8. **LLM agent.** Provider, prompt, console, status replies. This completes
-   Part 2.
-9. **Tuning.** Margin, expiry times and explore strategy, measured on live
-   runs.
+The phases and tasks are in [implementation_plan.md](implementation_plan.md).

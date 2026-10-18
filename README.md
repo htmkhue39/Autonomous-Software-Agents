@@ -59,8 +59,9 @@ src/
   follow-path.js     demo: walk a predefined path
   pickup-deliver.js  demo: pick up a parcel and deliver it
 docs/
-  project_requirement.md  what the project must do, from the course brief
-  design.md               architecture and design decisions
-  implementation_plan.md  the build plan, task by task
-  server_notes.md         facts observed on the server, open questions
+  project_requirement.md  what the agent must do, and why it is hard
+  design.md               how the agent works, and why it was built that way
+  implementation_plan.md  the order it is built in
 ```
+
+To understand the project, read the three documents in that order.

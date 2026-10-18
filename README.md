@@ -58,4 +58,9 @@ src/
   observe.js         demo: print what the server sends
   follow-path.js     demo: walk a predefined path
   pickup-deliver.js  demo: pick up a parcel and deliver it
+docs/
+  project_requirement.md  what the project must do, from the course brief
+  design.md               architecture and design decisions
+  implementation_plan.md  the build plan, task by task
+  server_notes.md         facts observed on the server, open questions
 ```

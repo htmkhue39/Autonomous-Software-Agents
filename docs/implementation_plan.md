@@ -14,7 +14,7 @@ phase, tasks are small enough to finish, test and commit in one sitting.
 | Phase | What it delivers | Tasks | Status |
 |---|---|---|---|
 | 0. Setup | A connection to the game server, and what we learned from it | 1 | Done |
-| 1. Beliefs | The agent's picture of the world | 2, 3 | Task 2 done, Task 3 next |
+| 1. Beliefs | The agent's picture of the world | 2, 3 | Done |
 | 2. Choosing what to do | Routes, and options with scores | 4, 5 | |
 | 3. Acting | An agent that plays on its own | 6, 7 | |
 | 4. External planner | Movement planned by PDDL | 8 | Completes Part 1 |
@@ -74,7 +74,7 @@ spawn tiles are, and when each tile was last in view.
 - [x] 8 tests, written first and seen to fail, now passing.
 - [x] Committed.
 
-**Task 3: Parcels, other agents, and all beliefs together**
+**Task 3: Parcels, other agents, and all beliefs together** (done)
 
 Files: `src/beliefs/parcels.js`, `src/beliefs/agents.js`,
 `src/beliefs/index.js`, and their tests.
@@ -118,10 +118,10 @@ Tests should show that:
 - beliefs become ready only when all three pieces have arrived, and every
   update is announced.
 
-- [ ] Tests written and seen to fail
-- [ ] Parcels, agents and combined beliefs written; suite and type check
+- [x] Tests written and seen to fail (23 tests)
+- [x] Parcels, agents and combined beliefs written; suite and type check
   pass
-- [ ] Committed
+- [x] Committed
 
 **Phase 1 is finished when** the agent's whole picture of the world can be
 built from server messages and every rule above is covered by a test.

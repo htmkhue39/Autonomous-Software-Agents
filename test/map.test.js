@@ -32,12 +32,18 @@ test('neighbors returns walkable adjacent tiles with directions', () => {
   assert.deepEqual(map.neighbors(1, 2, 0), [{ x: 1, y: 1, dir: 'down' }]);
 });
 
-// Assumption, not yet checked on the server (design.md section 9): an arrow
-// tile can be entered only by a move in the arrow's direction.
-test('arrow tiles can only be entered in their direction', () => {
+// The server's rule (backend/src/deliveroo/Tile.js and Controller.js in
+// unitn-ASA/Deliveroo.js): an arrow tile only refuses a move against it.
+test('an arrow tile cannot be entered against its direction', () => {
   const map = mapFromRows(['3→3']);
   assert.deepEqual(map.neighbors(0, 0, 0), [{ x: 1, y: 0, dir: 'right' }]);
   assert.deepEqual(map.neighbors(2, 0, 0), []);
+});
+
+test('an arrow tile can be entered from the side and left in any direction', () => {
+  const map = mapFromRows(['3', '→', '3']);
+  assert.deepEqual(map.neighbors(0, 2, 0), [{ x: 0, y: 1, dir: 'down' }]);
+  assert.deepEqual(map.neighbors(0, 1, 0).map(n => n.dir).sort(), ['down', 'up']);
 });
 
 test('delivery and spawn tiles are listed', () => {

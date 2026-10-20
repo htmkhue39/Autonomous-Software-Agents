@@ -68,8 +68,8 @@ phase needs no server: everything is tested with small hand-made maps.
 
 The map knows every tile's type, which tiles can be walked on, which tiles
 are blocked for a while after a failed move, where the agent can step from
-each tile (one-way tiles only in their direction), where the delivery and
-spawn tiles are, and when each tile was last in view.
+each tile (never into an arrow tile against its direction), where the
+delivery and spawn tiles are, and when each tile was last in view.
 
 - [x] 8 tests, written first and seen to fail, now passing.
 - [x] Committed.
@@ -176,7 +176,9 @@ What it should do:
 - Offer **deliver** while the agent carries something and a delivery tile
   can be reached.
 - Offer **explore** towards the reachable spawn tile seen longest ago, worth
-  zero.
+  zero, only among spawn tiles from which a delivery tile can still be
+  reached, so the agent never walks into a one-way dead end (design.md
+  section 9).
 - Drop other options worth nothing, sort the rest best first, and give each
   a short name so the same option can be recognised later.
 
@@ -184,8 +186,9 @@ Tests should show: decay applied to every parcel for the whole trip; values
 stopping at zero, and no decay when it is switched off; the more rewarding
 parcel ranked first even when it is further away; deliver offered only
 while carrying; no pickup at full capacity; explore heading for the spawn
-tile seen longest ago; and unreachable parcels, delivery tiles and parcels
-that could not be delivered producing no options and no crash.
+tile seen longest ago, and never to one with no way on to a delivery tile;
+and unreachable parcels, delivery tiles and parcels that could not be
+delivered producing no options and no crash.
 
 - [ ] Tests written and seen to fail
 - [ ] Scoring and options written; suite and type check pass

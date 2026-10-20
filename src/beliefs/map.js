@@ -26,17 +26,19 @@ export const DIRS = /** @type {const} */ ({
 /** @type {Partial<Record<TileType, Direction>>} */
 const ARROWS = { '↑': 'up', '↓': 'down', '←': 'left', '→': 'right' };
 
+/** @type {Record<Direction, Direction>} */
+const OPPOSITE = { up: 'down', down: 'up', left: 'right', right: 'left' };
+
 /**
  * Whether a tile of this type can be entered by a move in `dir`. Arrow tiles
- * only let the agent in when moving the way the arrow points. This is an
- * assumption not yet checked on the server (design.md section 9), kept here
- * so it is easy to change.
+ * refuse only a move against the arrow; they can be entered from the side
+ * and left in any direction. This is the server's rule (design.md section 9).
  * @param {TileType} type
  * @param {Direction} dir
  */
 function allowsEntry(type, dir) {
   const arrow = ARROWS[type];
-  return arrow === undefined || arrow === dir;
+  return arrow === undefined || OPPOSITE[arrow] !== dir;
 }
 
 /**

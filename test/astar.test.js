@@ -39,19 +39,16 @@ test('blocked tiles are avoided', () => {
   assert.deepEqual(findPath(map, { x: 0, y: 0 }, { x: 2, y: 0 }, { now: 1000 }), ['right', 'right']);
 });
 
-// The situation on the course map "tree": an arrow pointing right cannot be
-// entered by moving left, so the route goes around it.
-test('one-way tiles are only crossed in their direction', () => {
-  const rightward = mapFromRows([
-    '0333',
+// The situation on the course map "tree": a pair of arrows pointing at each
+// other cannot be crossed straight, so the route steps around and comes back
+// in from the side.
+test('one-way tiles are never entered against their direction', () => {
+  const map = mapFromRows([
+    '0330',
     '3→←3',
   ]);
-  assert.deepEqual(findPath(rightward, { x: 0, y: 0 }, { x: 3, y: 0 }, NOW), ['right', 'up', 'right', 'right', 'down']);
-  const leftward = mapFromRows([
-    '3330',
-    '3→←3',
-  ]);
-  assert.deepEqual(findPath(leftward, { x: 3, y: 0 }, { x: 0, y: 0 }, NOW), ['left', 'up', 'left', 'left', 'down']);
+  assert.deepEqual(findPath(map, { x: 0, y: 0 }, { x: 3, y: 0 }, NOW), ['right', 'up', 'right', 'down', 'right']);
+  assert.deepEqual(findPath(map, { x: 3, y: 0 }, { x: 0, y: 0 }, NOW), ['left', 'up', 'left', 'down', 'left']);
 });
 
 test('tiles occupied by other agents are avoided', () => {

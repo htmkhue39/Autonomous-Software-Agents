@@ -13,11 +13,14 @@ const UNIT_MS = { s: 1000, m: 60_000, h: 3_600_000 };
 /**
  * Milliseconds between two clock events, `Infinity` for 'infinite'.
  * @param {ClockEvent} event
- * @param {number} [clockMs]  milliseconds per frame, for 'frame'
+ * @param {number} [clockMs]  milliseconds per frame (the server's CLOCK), for 'frame'
  */
-export function decayIntervalMs(event, clockMs = 50) {
+export function decayIntervalMs(event, clockMs) {
   if (event === 'infinite') return Infinity;
-  if (event === 'frame') return clockMs;
+  if (event === 'frame') {
+    if (clockMs === undefined) throw new Error("A 'frame' clock event needs the server's CLOCK");
+    return clockMs;
+  }
   const match = /^(\d+)([smh])$/.exec(event);
   if (!match) throw new Error(`Unknown clock event: ${event}`);
   return Number(match[1]) * UNIT_MS[match[2]];

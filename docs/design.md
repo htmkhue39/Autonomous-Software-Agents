@@ -298,12 +298,11 @@ Things learned by connecting to the course server (map `long_hallways`,
   sends back is saved in `.env` so the agent keeps its identity.
 - The planner library always names its domain "default", so the domain file
   must use that name.
-- Arrow tiles refuse only a move against the arrow: they can be entered from
-  the side and left in any direction (server source, `Tile.js` and
-  `Controller.js`; seen on map `tree`, 25 × 25, where a move left into `→`
-  failed). Some arrow layouts form one-way dead ends: an agent can walk in
-  and never reach a delivery tile again, so an option is only worth taking
-  if a delivery tile can still be reached from where it leads.
+- The map can contain arrow and crate tiles (map `tree`, 25 × 25, has many
+  arrows). No movement rule is assumed for them: every tile except a wall
+  is treated as walkable, and a move the server refuses blocks that tile
+  for a while, as for any failed move (section 4). Tiles where a crate is
+  seen are blocked the same way.
 
 Open questions:
 
@@ -311,9 +310,6 @@ Open questions:
   pickups cost energy, which recharges over time), but the agent's energy
   level is not reported. If it is active, the scoring needs an energy term.
   To ask the course staff.
-- **Crate tiles.** Not present on the test maps. The server source lets an
-  agent walk on `5` tiles and push a crate onto the next `5` tile; until
-  that is checked, crate tiles are treated as walls.
 - **The PDDL solver.** Whether the online solver is reachable and fast
   enough from our network. To check before building the PDDL mover.
 - **Part 2.** The questions listed at the end of section 6.

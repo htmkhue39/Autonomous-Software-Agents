@@ -22,8 +22,8 @@ export function findPath(map, from, to, options) {
 }
 
 /**
- * The target with the shortest route from `from`, and that route. Walls,
- * blocked and one-way tiles come from the map's neighbours; tiles occupied
+ * The target with the shortest route from `from`, and that route. Walls and
+ * blocked tiles come from the map's neighbours; tiles occupied
  * by other agents or forbidden are never entered, not even as the target.
  * @param {GridMap} map
  * @param {Position} from

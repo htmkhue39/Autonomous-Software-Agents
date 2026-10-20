@@ -23,24 +23,6 @@ export const DIRS = /** @type {const} */ ({
   right: { dx: 1, dy: 0 },
 });
 
-/** @type {Partial<Record<TileType, Direction>>} */
-const ARROWS = { '↑': 'up', '↓': 'down', '←': 'left', '→': 'right' };
-
-/** @type {Record<Direction, Direction>} */
-const OPPOSITE = { up: 'down', down: 'up', left: 'right', right: 'left' };
-
-/**
- * Whether a tile of this type can be entered by a move in `dir`. Arrow tiles
- * refuse only a move against the arrow; they can be entered from the side
- * and left in any direction. This is the server's rule (design.md section 9).
- * @param {TileType} type
- * @param {Direction} dir
- */
-function allowsEntry(type, dir) {
-  const arrow = ARROWS[type];
-  return arrow === undefined || OPPOSITE[arrow] !== dir;
-}
-
 /**
  * What the agent believes about the map: the type of every tile, tiles to
  * avoid for a while after a failed move, and when each tile was last in view.
@@ -89,14 +71,14 @@ export class GridMap {
   }
 
   /**
-   * On the map, not a wall or a crate tile, and not blocked at `now`.
+   * On the map, not a wall, and not blocked at `now`.
    * @param {number} x
    * @param {number} y
    * @param {number} now
    */
   isWalkable(x, y, now) {
     const type = this.typeAt(x, y);
-    if (type === undefined || type === '0' || type.startsWith('5')) return false;
+    if (type === undefined || type === '0') return false;
     return (this.#blockedUntil.get(key(x, y)) ?? -Infinity) <= now;
   }
 
@@ -112,8 +94,7 @@ export class GridMap {
     for (const [dir, { dx, dy }] of /** @type {[Direction, {dx: number, dy: number}][]} */ (Object.entries(DIRS))) {
       const nx = x + dx;
       const ny = y + dy;
-      const type = this.typeAt(nx, ny);
-      if (type !== undefined && this.isWalkable(nx, ny, now) && allowsEntry(type, dir)) {
+      if (this.isWalkable(nx, ny, now)) {
         result.push({ x: nx, y: ny, dir });
       }
     }

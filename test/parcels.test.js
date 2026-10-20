@@ -31,6 +31,10 @@ test('an infinite decay setting means no decay', () => {
   assert.equal(parcels.get('p', 1e9)?.reward, 10);
 });
 
+test("a decay of one frame needs the server's frame time", () => {
+  assert.throws(() => decayIntervalMs('frame'));
+});
+
 test('an unknown decay setting is an error', () => {
   assert.throws(() => decayIntervalMs(/** @type {any} */ ('soon')));
 });

@@ -15,7 +15,7 @@ phase, tasks are small enough to finish, test and commit in one sitting.
 |---|---|---|---|
 | 0. Setup | A connection to the game server, and what we learned from it | 1 | Done |
 | 1. Beliefs | The agent's picture of the world | 2, 3 | Done |
-| 2. Choosing what to do | Routes, and options with scores | 4, 5 | |
+| 2. Choosing what to do | Routes, and options with scores | 4, 5 | Task 4 done, Task 5 next |
 | 3. Acting | An agent that plays on its own | 6, 7 | |
 | 4. External planner | Movement planned by PDDL | 8 | Completes Part 1 |
 | 5. Instructions in the BDI agent | Goals and constraints, written by hand | 9 | |
@@ -133,7 +133,7 @@ built from server messages and every rule above is covered by a test.
 Routes, and the scoring that decides what is worth doing
 ([design.md](design.md), sections 2 and 4). Still no server needed.
 
-**Task 4: A\* path finding**
+**Task 4: A\* path finding** (done)
 
 File: `src/planning/astar.js`, and its tests.
 
@@ -155,9 +155,9 @@ unreachable tile; occupied and forbidden tiles avoided, including as the
 target; the closest of several targets picked; and nothing returned when
 no target can be reached.
 
-- [ ] Tests written and seen to fail
-- [ ] A\* written; suite and type check pass
-- [ ] Committed
+- [x] Tests written and seen to fail (13 tests)
+- [x] A\* written; suite and type check pass
+- [x] Committed
 
 **Task 5: Scoring and options**
 

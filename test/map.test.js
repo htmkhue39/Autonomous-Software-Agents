@@ -7,13 +7,13 @@ test('key joins coordinates', () => {
   assert.equal(key(2, 5), '2,5');
 });
 
-test('walls, crate tiles and off-map are not walkable', () => {
+test('walls and off-map are not walkable, every other tile is', () => {
   const map = mapFromRows(['305', '312']);
   assert.equal(map.isWalkable(0, 0, 0), true);   // '3' walkable
   assert.equal(map.isWalkable(1, 0, 0), true);   // '1' spawner
   assert.equal(map.isWalkable(2, 0, 0), true);   // '2' delivery
   assert.equal(map.isWalkable(1, 1, 0), false);  // '0' wall
-  assert.equal(map.isWalkable(2, 1, 0), false);  // '5' crate tile
+  assert.equal(map.isWalkable(2, 1, 0), true);   // '5' crate tile
   assert.equal(map.isWalkable(-1, 0, 0), false);
   assert.equal(map.isWalkable(0, 2, 0), false);
 });
@@ -32,12 +32,13 @@ test('neighbors returns walkable adjacent tiles with directions', () => {
   assert.deepEqual(map.neighbors(1, 2, 0), [{ x: 1, y: 1, dir: 'down' }]);
 });
 
-// Assumption, not yet checked on the server (design.md section 9): an arrow
-// tile can be entered only by a move in the arrow's direction.
-test('arrow tiles can only be entered in their direction', () => {
+// No movement rule is assumed for arrow tiles: a move the server refuses
+// blocks the tile for a while instead (design.md section 4).
+test('arrow tiles can be entered and left in any direction', () => {
   const map = mapFromRows(['3→3']);
   assert.deepEqual(map.neighbors(0, 0, 0), [{ x: 1, y: 0, dir: 'right' }]);
-  assert.deepEqual(map.neighbors(2, 0, 0), []);
+  assert.deepEqual(map.neighbors(2, 0, 0), [{ x: 1, y: 0, dir: 'left' }]);
+  assert.deepEqual(map.neighbors(1, 0, 0).map(n => n.dir).sort(), ['left', 'right']);
 });
 
 test('delivery and spawn tiles are listed', () => {

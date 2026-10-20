@@ -14,8 +14,8 @@ phase, tasks are small enough to finish, test and commit in one sitting.
 | Phase | What it delivers | Tasks | Status |
 |---|---|---|---|
 | 0. Setup | A connection to the game server, and what we learned from it | 1 | Done |
-| 1. Beliefs | The agent's picture of the world | 2, 3 | Task 2 done, Task 3 next |
-| 2. Choosing what to do | Routes, and options with scores | 4, 5 | |
+| 1. Beliefs | The agent's picture of the world | 2, 3 | Done |
+| 2. Choosing what to do | Routes, and options with scores | 4, 5 | Task 4 done, Task 5 next |
 | 3. Acting | An agent that plays on its own | 6, 7 | |
 | 4. External planner | Movement planned by PDDL | 8 | Completes Part 1 |
 | 5. Instructions in the BDI agent | Goals and constraints, written by hand | 9 | |
@@ -68,13 +68,13 @@ phase needs no server: everything is tested with small hand-made maps.
 
 The map knows every tile's type, which tiles can be walked on, which tiles
 are blocked for a while after a failed move, where the agent can step from
-each tile (one-way tiles only in their direction), where the delivery and
-spawn tiles are, and when each tile was last in view.
+each tile, where the delivery and spawn tiles are, and when each tile was
+last in view.
 
 - [x] 8 tests, written first and seen to fail, now passing.
 - [x] Committed.
 
-**Task 3: Parcels, other agents, and all beliefs together**
+**Task 3: Parcels, other agents, and all beliefs together** (done)
 
 Files: `src/beliefs/parcels.js`, `src/beliefs/agents.js`,
 `src/beliefs/index.js`, and their tests.
@@ -118,10 +118,10 @@ Tests should show that:
 - beliefs become ready only when all three pieces have arrived, and every
   update is announced.
 
-- [ ] Tests written and seen to fail
-- [ ] Parcels, agents and combined beliefs written; suite and type check
+- [x] Tests written and seen to fail (23 tests)
+- [x] Parcels, agents and combined beliefs written; suite and type check
   pass
-- [ ] Committed
+- [x] Committed
 
 **Phase 1 is finished when** the agent's whole picture of the world can be
 built from server messages and every rule above is covered by a test.
@@ -133,7 +133,7 @@ built from server messages and every rule above is covered by a test.
 Routes, and the scoring that decides what is worth doing
 ([design.md](design.md), sections 2 and 4). Still no server needed.
 
-**Task 4: A\* path finding**
+**Task 4: A\* path finding** (done)
 
 File: `src/planning/astar.js`, and its tests.
 
@@ -142,8 +142,7 @@ What it should do:
 - Find a shortest route between two tiles as a list of moves. The route is
   empty when the agent is already there, and there is no route when the
   target cannot be reached.
-- Follow the map's neighbours, so walls, blocked tiles and one-way tiles
-  are respected.
+- Follow the map's neighbours, so walls and blocked tiles are respected.
 - Never enter a tile where an agent was recently seen, or a tile a user
   constraint forbids (Phase 5), not even as the target.
 - Given several targets, find the closest one that can be reached, and the
@@ -155,9 +154,9 @@ unreachable tile; occupied and forbidden tiles avoided, including as the
 target; the closest of several targets picked; and nothing returned when
 no target can be reached.
 
-- [ ] Tests written and seen to fail
-- [ ] A\* written; suite and type check pass
-- [ ] Committed
+- [x] Tests written and seen to fail (13 tests)
+- [x] A\* written; suite and type check pass
+- [x] Committed
 
 **Task 5: Scoring and options**
 

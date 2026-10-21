@@ -24,14 +24,21 @@ export const DIRS = /** @type {const} */ ({
 });
 
 /**
- * What the agent believes about the map: the type of every tile, tiles to
- * avoid for a while after a failed move, and when each tile was last in view.
+ * What the agent believes about the map: the type of every tile, tiles and
+ * moves to avoid for a while, and when each tile was last in view.
+ *
+ * A refused move is remembered as that one move, not the whole tile, since
+ * the tile may still be enterable from another side. Each time the same move
+ * is refused again it stays blocked twice as long, so a passing agent is
+ * soon forgotten while a passage that never works is avoided for longer.
  */
 export class GridMap {
   /** @type {Map<TileKey, TileType>} */
   #types = new Map();
   /** @type {Map<TileKey, number>} time until which the tile is blocked */
   #blockedUntil = new Map();
+  /** @type {Map<string, { failures: number, until: number }>} refused moves by `${x},${y},${dir}` */
+  #failedMoves = new Map();
   /** @type {Map<TileKey, number>} */
   #seenAt = new Map();
 
@@ -39,10 +46,14 @@ export class GridMap {
    * @param {number} width
    * @param {number} height
    * @param {Tile[]} tiles
+   * @param {{ blockedTtlMs?: number, maxBlockedMs?: number }} [options]
+   *   how long a refused move is first avoided, and the most it ever is
    */
-  constructor(width, height, tiles) {
+  constructor(width, height, tiles, { blockedTtlMs = 2000, maxBlockedMs = 30_000 } = {}) {
     this.width = width;
     this.height = height;
+    this.blockedTtlMs = blockedTtlMs;
+    this.maxBlockedMs = maxBlockedMs;
     for (const tile of tiles) this.updateTile(tile);
   }
 
@@ -71,6 +82,31 @@ export class GridMap {
   }
 
   /**
+   * The server refused the move `dir` from (x, y) at `now`: avoid it for a
+   * while, twice as long as the last time it was refused.
+   * @param {number} x
+   * @param {number} y
+   * @param {Direction} dir
+   * @param {number} now
+   */
+  failMove(x, y, dir, now) {
+    const k = `${key(x, y)},${dir}`;
+    const failures = (this.#failedMoves.get(k)?.failures ?? 0) + 1;
+    const ttl = Math.min(this.blockedTtlMs * 2 ** (failures - 1), this.maxBlockedMs);
+    this.#failedMoves.set(k, { failures, until: now + ttl });
+  }
+
+  /**
+   * The move `dir` from (x, y) worked: forget any earlier refusals.
+   * @param {number} x
+   * @param {number} y
+   * @param {Direction} dir
+   */
+  moveSucceeded(x, y, dir) {
+    this.#failedMoves.delete(`${key(x, y)},${dir}`);
+  }
+
+  /**
    * On the map, not a wall, and not blocked at `now`.
    * @param {number} x
    * @param {number} y
@@ -83,7 +119,8 @@ export class GridMap {
   }
 
   /**
-   * Tiles one step away that the agent can move into, with the direction.
+   * Tiles one step away that the agent can move into, with the direction,
+   * leaving out moves that were refused recently.
    * @param {number} x
    * @param {number} y
    * @param {number} now
@@ -94,7 +131,8 @@ export class GridMap {
     for (const [dir, { dx, dy }] of /** @type {[Direction, {dx: number, dy: number}][]} */ (Object.entries(DIRS))) {
       const nx = x + dx;
       const ny = y + dy;
-      if (this.isWalkable(nx, ny, now)) {
+      const refusedUntil = this.#failedMoves.get(`${key(x, y)},${dir}`)?.until ?? -Infinity;
+      if (this.isWalkable(nx, ny, now) && refusedUntil <= now) {
         result.push({ x: nx, y: ny, dir });
       }
     }

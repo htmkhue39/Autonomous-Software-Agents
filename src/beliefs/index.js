@@ -25,11 +25,12 @@ export class Beliefs {
   #listeners = [];
 
   /**
-   * @param {{ now?: () => number, agentTtlMs: number, blockedTtlMs: number }} options
+   * @param {{ now?: () => number, agentTtlMs: number, blockedTtlMs: number, maxBlockedMs?: number }} options
    */
-  constructor({ now = Date.now, agentTtlMs, blockedTtlMs }) {
+  constructor({ now = Date.now, agentTtlMs, blockedTtlMs, maxBlockedMs }) {
     this.now = now;
     this.blockedTtlMs = blockedTtlMs;
+    this.maxBlockedMs = maxBlockedMs;
     this.parcels = new ParcelBeliefs(Infinity);
     this.agents = new AgentBeliefs(agentTtlMs);
   }
@@ -69,7 +70,7 @@ export class Beliefs {
   onMap(_width, _height, tiles) {
     const width = Math.max(...tiles.map(t => t.x)) + 1;
     const height = Math.max(...tiles.map(t => t.y)) + 1;
-    this.map = new GridMap(width, height, tiles);
+    this.map = new GridMap(width, height, tiles, { blockedTtlMs: this.blockedTtlMs, maxBlockedMs: this.maxBlockedMs });
     this.#changed();
   }
 

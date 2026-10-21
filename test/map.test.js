@@ -60,3 +60,34 @@ test('remembers when each tile was last seen', () => {
   assert.equal(map.lastSeen(0, 0), 500);
   assert.equal(map.lastSeen(1, 0), -Infinity);
 });
+
+test('a refused move blocks only that move, not the tile', () => {
+  const map = mapFromRows(['333', '333'], { blockedTtlMs: 1000 });
+  map.failMove(0, 0, 'right', 0);
+  assert.deepEqual(map.neighbors(0, 0, 0).map(n => n.dir), ['up']);
+  // The same tile can still be entered from above.
+  assert.ok(map.neighbors(1, 1, 0).some(n => n.dir === 'down'));
+  assert.ok(map.neighbors(0, 0, 1000).some(n => n.dir === 'right'));
+});
+
+test('a move refused again stays blocked twice as long, up to a limit', () => {
+  const map = mapFromRows(['33'], { blockedTtlMs: 1000, maxBlockedMs: 3000 });
+  const canGoRight = (/** @type {number} */ now) => map.neighbors(0, 0, now).length === 1;
+  map.failMove(0, 0, 'right', 0);        // blocked until 1000
+  map.failMove(0, 0, 'right', 1000);     // until 3000
+  assert.equal(canGoRight(2999), false);
+  assert.equal(canGoRight(3000), true);
+  map.failMove(0, 0, 'right', 3000);     // 4000 would exceed the limit: until 6000
+  assert.equal(canGoRight(5999), false);
+  assert.equal(canGoRight(6000), true);
+});
+
+test('a move that succeeds is trusted again', () => {
+  const map = mapFromRows(['33'], { blockedTtlMs: 1000 });
+  map.failMove(0, 0, 'right', 0);
+  map.failMove(0, 0, 'right', 1000);
+  map.moveSucceeded(0, 0, 'right');
+  assert.equal(map.neighbors(0, 0, 0).length, 1);
+  map.failMove(0, 0, 'right', 5000);     // counts as a first failure again
+  assert.equal(map.neighbors(0, 0, 6000).length, 1);
+});

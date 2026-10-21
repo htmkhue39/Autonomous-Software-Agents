@@ -97,3 +97,9 @@ test('nothing is returned when no target can be reached', () => {
   assert.equal(findNearest(map, { x: 0, y: 0 }, [{ x: 2, y: 0 }, { x: 4, y: 0 }], NOW), null);
   assert.equal(findNearest(map, { x: 0, y: 0 }, [], NOW), null);
 });
+
+test('a tile behind a refused move is reached from another side', () => {
+  const map = mapFromRows(['333', '333'], { blockedTtlMs: 1000 });
+  map.failMove(0, 0, 'right', 0);
+  assert.deepEqual(findPath(map, { x: 0, y: 0 }, { x: 1, y: 0 }, NOW), ['up', 'right', 'down']);
+});

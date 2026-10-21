@@ -148,8 +148,18 @@ each step is also a natural moment to check whether the intention is still
 worth pursuing.
 
 **When a move fails**, the agent does not simply retry, because every
-failed move costs a point. Instead the failure becomes a belief: the tile
-is marked blocked for about two seconds, and the next route goes around it.
+failed move costs a point. Instead the failure becomes a belief: that
+move (from this tile, in this direction) is avoided for about two seconds,
+and the next route goes around it. Only the move is avoided, not the tile,
+since the tile may still be enterable from another side. If the same move
+is refused again it is avoided twice as long (4 s, 8 s, ... up to 30 s),
+and a move that works clears the record. A passing agent is soon forgotten,
+while a passage that never works stops luring the agent back. A fixed
+time could not tell the two apart: the agent forgot real dead ends as fast
+as passing agents, and kept walking back into them. Assuming every
+tile is passable until shown otherwise, and correcting the map from what
+fails, is the usual way to move through terrain only partly known (the
+"freespace assumption" of D\* Lite, Koenig and Likhachev).
 After about three failures on the way to the same target, the agent gives
 up the intention and deliberates again. A move the server does not answer
 within one second is treated as a failed move, so the agent never crashes
@@ -160,7 +170,7 @@ and the loop carries on.
 
 | What goes wrong | What the agent does |
 |---|---|
-| A move fails or is not answered | Marks the tile blocked for a while and finds a detour; gives up after a few failures |
+| A move fails or is not answered | Avoids that move for a while, longer each time it fails again, and finds a detour; gives up after a few failures |
 | The parcel is gone on arrival | Forgets the parcel and chooses again |
 | There is no route to the target | Leaves that option out and chooses again |
 | The connection drops | The game library reconnects, and beliefs rebuild from what the server sends next |
@@ -300,9 +310,9 @@ Things learned by connecting to the course server (map `long_hallways`,
   must use that name.
 - The map can contain arrow and crate tiles (map `tree`, 25 × 25, has many
   arrows). No movement rule is assumed for them: every tile except a wall
-  is treated as walkable, and a move the server refuses blocks that tile
-  for a while, as for any failed move (section 4). Tiles where a crate is
-  seen are blocked the same way.
+  is treated as walkable, and a move the server refuses is avoided for a
+  while, as for any failed move (section 4). Tiles where a crate is seen
+  are blocked as a whole for a short time.
 
 Open questions:
 

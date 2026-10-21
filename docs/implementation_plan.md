@@ -67,7 +67,7 @@ phase needs no server: everything is tested with small hand-made maps.
 **Task 2: Map beliefs** (done)
 
 The map knows every tile's type, which tiles can be walked on, which tiles
-are blocked for a while after a failed move, where the agent can step from
+are blocked for a while (crates), which moves were refused, where the agent can step from
 each tile, where the delivery and spawn tiles are, and when each tile was
 last in view.
 
@@ -158,6 +158,14 @@ no target can be reached.
 - [x] A\* written; suite and type check pass
 - [x] Committed
 
+*Changed afterwards:* a refused move used to block the whole tile for a
+fixed two seconds. Once that expired, A\* planned straight back into a
+passage that never worked, and the agent could loop there. The map now
+remembers the refused move itself, avoids it twice as long each time it is
+refused again (up to `maxBlockedMs`), and forgets it once the move works
+([design.md](design.md), section 4). Four more tests cover this. Task 6
+must call `failMove` and `moveSucceeded` after each step.
+
 **Task 5: Scoring and options**
 
 Files: `src/deliberation/utility.js`, `src/deliberation/options.js`, and
@@ -224,7 +232,7 @@ make moves fail or go unanswered on chosen tiles, and what a pickup
 returns.
 
 Tests should show: the agent reaches its target; it stops when told; a
-failing tile is blocked and walked around; it gives up when the only route
+refused move is remembered and walked around; it gives up when the only route
 keeps failing; an unanswered move counts as a failure without crashing;
 pickup and deliver walk first and then act; a parcel someone else took
 makes pickup fail and is forgotten; and every kind of option has exactly
@@ -465,7 +473,7 @@ results.
 | Setting | Try | Too low | Too high |
 |---|---|---|---|
 | Switching margin | 1.0, 1.2, 1.5 | switching back and forth | ignoring much better parcels |
-| How long a failed tile stays blocked | 1, 2, 4 s | repeated failed moves | long detours |
+| How long a refused move is first avoided | 1, 2, 4 s | repeated failed moves | long detours |
 | How long a seen agent blocks a tile | 1, 3 s | walking into agents | avoiding empty tiles |
 | PDDL time limit | 2, 5 s | falling back to A\* too often | long pauses |
 

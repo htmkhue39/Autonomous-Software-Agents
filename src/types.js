@@ -144,7 +144,8 @@
  * @property {string} name
  * @property {'astar' | 'pddl'} mover
  * @property {number} replaceMargin    a new option must beat the current one by this factor
- * @property {number} blockedTtlMs     how long a failed-move tile stays blocked
+ * @property {number} blockedTtlMs     how long a refused move is first avoided; doubles on each repeat
+ * @property {number} maxBlockedMs     the longest a refused move is ever avoided
  * @property {number} agentTtlMs       how long a sighted agent counts as an obstacle
  * @property {number} maxMoveRetries
  * @property {number} pddlTimeoutMs

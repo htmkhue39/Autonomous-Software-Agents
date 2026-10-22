@@ -170,6 +170,8 @@
  * Something the agent could commit to, produced by deliberation.
  * `priority` 1 marks a user goal, which outranks any autonomous option.
  * @typedef {Object} Option
+ * @property {string} id          short name that stays the same while the option does,
+ *                                e.g. 'pickup:p1', 'deliver', 'explore:4,0'
  * @property {'pickup' | 'deliver' | 'explore' | 'goto'} type
  * @property {number} x
  * @property {number} y

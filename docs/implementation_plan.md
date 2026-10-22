@@ -15,8 +15,8 @@ phase, tasks are small enough to finish, test and commit in one sitting.
 |---|---|---|---|
 | 0. Setup | A connection to the game server, and what we learned from it | 1 | Done |
 | 1. Beliefs | The agent's picture of the world | 2, 3 | Done |
-| 2. Choosing what to do | Routes, and options with scores | 4, 5 | Task 4 done, Task 5 next |
-| 3. Acting | An agent that plays on its own | 6, 7 | |
+| 2. Choosing what to do | Routes, and options with scores | 4, 5 | Done |
+| 3. Acting | An agent that plays on its own | 6, 7 | Task 6 next |
 | 4. External planner | Movement planned by PDDL | 8 | Completes Part 1 |
 | 5. Instructions in the BDI agent | Goals and constraints, written by hand | 9 | |
 | 6. The LLM agent | Instructions in plain language | 10, 11 | Completes Part 2 |
@@ -166,7 +166,7 @@ refused again (up to `maxBlockedMs`), and forgets it once the move works
 ([design.md](design.md), section 4). Four more tests cover this. Task 6
 must call `failMove` and `moveSucceeded` after each step.
 
-**Task 5: Scoring and options**
+**Task 5: Scoring and options** (done)
 
 Files: `src/deliberation/utility.js`, `src/deliberation/options.js`, and
 their tests.
@@ -194,9 +194,12 @@ while carrying; no pickup at full capacity; explore heading for the spawn
 tile seen longest ago; and unreachable parcels, delivery tiles and parcels
 that could not be delivered producing no options and no crash.
 
-- [ ] Tests written and seen to fail
-- [ ] Scoring and options written; suite and type check pass
-- [ ] Committed
+- [x] Tests written and seen to fail (15 tests)
+- [x] Scoring and options written; suite and type check pass
+- [x] Committed
+
+Energy is left out of the score until the course staff say whether it is
+active ([design.md](design.md), section 9).
 
 **Phase 2 is finished when**, given any set of beliefs, the agent can list
 what it could do and how much each option is worth.

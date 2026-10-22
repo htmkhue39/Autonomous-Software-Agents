@@ -123,7 +123,10 @@ tuned in live runs.
 
 Every time beliefs change, the current intention is scored again with
 fresh values (its parcel may have lost value or vanished) and compared with
-the best option. User goals from Part 2 have a higher priority and always
+the best option. An intention to pick up a parcel that is gone, or that
+another agent now carries, is dropped at once without this comparison:
+worth zero, it would otherwise be kept against an explore option also
+worth zero, and the agent would walk on to an empty tile. User goals from Part 2 have a higher priority and always
 win over the agent's own options (section 6).
 
 ## 4. How the agent moves

@@ -262,10 +262,17 @@ What it should do:
 - On every change in beliefs, score the current intention again with fresh
   values, compare it with the best option, and stop it if the switching
   rule says so.
+- Stop a pickup intention at once, without the switching rule, when its
+  parcel is no longer free (another agent carries it, or it is gone). The
+  switching rule alone would keep it: the dead intention is worth 0, and
+  so is exploring, so nothing beats it by a point and the agent would walk
+  on to an empty tile.
 - The start-up file connects to the server, feeds every message into
   beliefs, builds the plans with the chosen mover, and starts the loop.
 
-Tests should show each rule of the switching decision on its own, that an
+Tests should show each rule of the switching decision on its own; that a
+pickup intention is stopped when its parcel is taken by another agent or
+vanishes, even when only exploring is left; that an
 intention runs the plan that fits, that it fails when none fits or the plan
 crashes, and that a running plan notices when its intention is stopped.
 

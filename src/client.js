@@ -78,5 +78,15 @@ export function connect(config) {
     });
   }
 
-  return { socket, move, pickup, putdown, onConfig, onMap, onTile, onSensing, onYou };
+  /**
+   * The server pings about once a second with its current frame.
+   * @param {(frame: number) => void} callback
+   */
+  function onPing(callback) {
+    socket.on('ping', (/** @type {{ frame?: number }} */ ping) => {
+      if (typeof ping?.frame === 'number') callback(ping.frame);
+    });
+  }
+
+  return { socket, move, pickup, putdown, onConfig, onMap, onTile, onSensing, onYou, onPing };
 }

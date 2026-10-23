@@ -52,8 +52,15 @@ reports:
 - **Parcels.** Where each parcel is, what it was worth when last seen, and
   who carries it. The agent does not see a parcel all the time, so it
   *estimates* its current value: the last seen value minus one point per
-  second since then. A parcel is forgotten when the agent looks at its tile
-  and it is not there, or when its estimated value reaches zero.
+  decay interval since then (one second on the course server; the interval
+  comes from the server's settings). A parcel is forgotten when its
+  estimated value reaches zero, or when the agent looks at the tile where
+  it was last seen and it is not there. That rule holds for a parcel
+  another agent carries too: it has moved on with its carrier or been
+  delivered, and either way the agent cannot use it. The parcels the agent
+  carries itself are known from its own pickup and putdown results, so
+  they do not depend on what sensing reports; parcels it delivers are
+  forgotten right after the putdown.
 - **Other agents.** Where each was last seen and when. A tile where an
   agent was seen in the last few seconds counts as blocked; after that the
   agent has probably moved on.
@@ -62,6 +69,15 @@ reports:
 They are *beliefs*, not facts, because they can be wrong: a parcel seen ten
 seconds ago may already have been taken. The rest of the design is built to
 cope with that.
+
+**Time is the server's game time.** Parcel values change on the server's
+clock, so every time in the beliefs (when a parcel or agent was seen, how
+long a move stays avoided) is measured on it. Sensing messages and pings
+carry the server's frame number, and the frame times the server's `CLOCK`
+(milliseconds per frame) gives the game time. Between messages the local
+clock carries it forward. The local clock alone would drift from the
+server's whenever messages are delayed, and the server can be slow: it
+once took 17 seconds to answer.
 
 ## 2. What the agent could do, and what each option is worth
 
@@ -123,7 +139,10 @@ tuned in live runs.
 
 Every time beliefs change, the current intention is scored again with
 fresh values (its parcel may have lost value or vanished) and compared with
-the best option. User goals from Part 2 have a higher priority and always
+the best option. An intention to pick up a parcel that is gone, or that
+another agent now carries, is dropped at once without this comparison:
+worth zero, it would otherwise be kept against an explore option also
+worth zero, and the agent would walk on to an empty tile. User goals from Part 2 have a higher priority and always
 win over the agent's own options (section 6).
 
 ## 4. How the agent moves
@@ -293,7 +312,8 @@ are compared by score over five minutes on the same map.
 ## 9. Notes on the server and open questions
 
 Things learned by connecting to the course server (map `long_hallways`,
-20 × 20, October 2026) that the code has to work around:
+20 × 20, October 2026, and the demo map `missions_tournament`, 10 × 8, on
+23 October) that the code has to work around:
 
 - The server does not send a separate "you" message. The agent's own
   position and score arrive inside each sensing message.
@@ -313,13 +333,26 @@ Things learned by connecting to the course server (map `long_hallways`,
   is treated as walkable, and a move the server refuses is avoided for a
   while, as for any failed move (section 4). Tiles where a crate is seen
   are blocked as a whole for a short time.
+- Each parcel arrives as `id`, `x`, `y`, `reward` and `carriedBy` only:
+  there is no timer field, the reward is the timer.
+- Sensing messages carry a `frame` number and an `entities` list, and the
+  server sends a `ping` with the frame about once a second.
+- Settings differ from map to map and are read from the server, never
+  assumed. On `missions_tournament` parcels never decay ("infinite"),
+  energy is on, a move takes 0.1 s, and the settings give no `PENALTY`.
+  Its `missions` plugin runs a red light / green light game announced by
+  messages from "mission-master": moving on red costs 15 points.
 
 Open questions:
 
-- **Energy.** The server settings include an energy system (moves and
-  pickups cost energy, which recharges over time), but the agent's energy
-  level is not reported. If it is active, the scoring needs an energy term.
-  To ask the course staff.
+- **Points lost.** Failed-move penalties, energy (active on
+  `missions_tournament`: 100 to start, 1 per move, pickup or putdown, 10
+  back every 5 s; the agent's own level is not reported) and mission
+  penalties all cost points the scoring does not count yet. Left until the
+  base agent plays on its own; energy to ask the course staff about.
+- **Own carried parcels in sensing.** Whether sensing reports the parcels
+  the agent carries itself. The design does not rely on it (section 1);
+  to check in the first live run.
 - **The PDDL solver.** Whether the online solver is reachable and fast
   enough from our network. To check before building the PDDL mover.
 - **Part 2.** The questions listed at the end of section 6.

@@ -14,9 +14,9 @@ phase, tasks are small enough to finish, test and commit in one sitting.
 | Phase | What it delivers | Tasks | Status |
 |---|---|---|---|
 | 0. Setup | A connection to the game server, and what we learned from it | 1 | Done |
-| 1. Beliefs | The agent's picture of the world | 2, 3 | Done |
-| 2. Choosing what to do | Routes, and options with scores | 4, 5 | Task 4 done, Task 5 next |
-| 3. Acting | An agent that plays on its own | 6, 7 | |
+| 1. Beliefs | The agent's picture of the world | 2, 3, 3b | Done |
+| 2. Choosing what to do | Routes, and options with scores | 4, 5 | Done |
+| 3. Acting | An agent that plays on its own | 6, 7 | Task 6 next |
 | 4. External planner | Movement planned by PDDL | 8 | Completes Part 1 |
 | 5. Instructions in the BDI agent | Goals and constraints, written by hand | 9 | |
 | 6. The LLM agent | Instructions in plain language | 10, 11 | Completes Part 2 |
@@ -88,7 +88,7 @@ What it should do:
   never below zero.
 - Forget a parcel when its tile is in view and the parcel is not there, or
   when its value reaches zero. Parcels being carried are not forgotten this
-  way.
+  way (changed in Task 3b).
 - List the free parcels (not carried, still worth something), and the
   parcels a given agent carries.
 - Remember other agents' rounded positions and when they were seen. Only
@@ -121,6 +121,46 @@ Tests should show that:
 - [x] Tests written and seen to fail (23 tests)
 - [x] Parcels, agents and combined beliefs written; suite and type check
   pass
+- [x] Committed
+
+**Task 3b: Parcel beliefs on the game clock** (done)
+
+Added after checking the server on 23 October ([design.md](design.md),
+sections 1 and 9). Two gaps were found: times were measured on the local
+clock, not the server's, and a carried parcel was never forgotten, so a
+parcel the agent had delivered still counted as carried (worse when parcels
+never decay), and so did one another agent had carried away.
+
+Files: `src/beliefs/clock.js`, `src/beliefs/parcels.js`,
+`src/beliefs/index.js`, `src/client.js`, and their tests.
+
+What it should do:
+
+- Keep the game time: each sensing message or ping with a frame sets it to
+  frame times `CLOCK`, and between messages it moves on with the local
+  clock. Every time in the beliefs uses it.
+- Forget a parcel another agent carries when the tile where it was last
+  seen is in view and the parcel is not there.
+- Learn the parcels the agent carries from its own actions: the parcels a
+  pickup returns become carried by it, and the parcels a putdown returns
+  are no longer carried; on a delivery tile they are forgotten.
+
+Tests should show that:
+
+- game time follows the frames and moves on between them;
+- a parcel loses value by the game time passed, even when the local clock
+  says otherwise;
+- a parcel carried by another agent is forgotten once its last tile is seen
+  without it, and kept while that tile is out of view;
+- a picked-up parcel counts as carried before sensing reports it;
+- parcels put down on a delivery tile are forgotten, and no longer count
+  as carried.
+
+- [x] Tests written and seen to fail (11 tests, one Task 3 test changed to
+  the new rule)
+- [x] Clock and parcel changes written; suite and type check pass
+- [x] Checked read-only on the server: the game time follows the ping
+  frames
 - [x] Committed
 
 **Phase 1 is finished when** the agent's whole picture of the world can be
@@ -166,7 +206,7 @@ refused again (up to `maxBlockedMs`), and forgets it once the move works
 ([design.md](design.md), section 4). Four more tests cover this. Task 6
 must call `failMove` and `moveSucceeded` after each step.
 
-**Task 5: Scoring and options**
+**Task 5: Scoring and options** (done)
 
 Files: `src/deliberation/utility.js`, `src/deliberation/options.js`, and
 their tests.
@@ -194,9 +234,12 @@ while carrying; no pickup at full capacity; explore heading for the spawn
 tile seen longest ago; and unreachable parcels, delivery tiles and parcels
 that could not be delivered producing no options and no crash.
 
-- [ ] Tests written and seen to fail
-- [ ] Scoring and options written; suite and type check pass
-- [ ] Committed
+- [x] Tests written and seen to fail (15 tests)
+- [x] Scoring and options written; suite and type check pass
+- [x] Committed
+
+Energy is left out of the score until the course staff say whether it is
+active ([design.md](design.md), section 9).
 
 **Phase 2 is finished when**, given any set of beliefs, the agent can list
 what it could do and how much each option is worth.
@@ -220,12 +263,13 @@ What it should do:
   step and taking only its first move. The route planner is passed in, so
   A\* or PDDL can be used.
 - Stop when told to, before each step.
-- After a failed or unanswered move, block that tile for a short time and
-  try another route; give up after three failures.
+- After a failed or unanswered move, record the refused move
+  (`failMove`) and try another route; after a move that works, clear it
+  (`moveSucceeded`). Give up after three failures.
 - Provide one plan for each kind of option: go to a tile; pick up (walk
   there, pick up, and forget the parcel and fail if it is gone); deliver
   (walk there, put down, and forget the delivered parcels); explore (walk
-  there).
+  there). Pickup and putdown results go into the beliefs (Task 3b).
 
 The fake game server moves the agent in its beliefs, and can be told to
 make moves fail or go unanswered on chosen tiles, and what a pickup
@@ -262,10 +306,17 @@ What it should do:
 - On every change in beliefs, score the current intention again with fresh
   values, compare it with the best option, and stop it if the switching
   rule says so.
+- Stop a pickup intention at once, without the switching rule, when its
+  parcel is no longer free (another agent carries it, or it is gone). The
+  switching rule alone would keep it: the dead intention is worth 0, and
+  so is exploring, so nothing beats it by a point and the agent would walk
+  on to an empty tile.
 - The start-up file connects to the server, feeds every message into
   beliefs, builds the plans with the chosen mover, and starts the loop.
 
-Tests should show each rule of the switching decision on its own, that an
+Tests should show each rule of the switching decision on its own; that a
+pickup intention is stopped when its parcel is taken by another agent or
+vanishes, even when only exploring is left; that an
 intention runs the plan that fits, that it fails when none fits or the plan
 crashes, and that a running plan notices when its intention is stopped.
 

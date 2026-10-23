@@ -73,11 +73,45 @@ test('a parcel is forgotten when its tile is seen empty', () => {
   assert.equal(parcels.get('b', 100)?.id, 'b');
 });
 
-test('a carried parcel is not forgotten when its tile is seen empty', () => {
+test("a parcel another agent carries is forgotten once its last tile is seen without it", () => {
   const parcels = new ParcelBeliefs(1000);
-  parcels.update([parcel('c', 0, 0, 10, 'a1')], [], 0);
-  parcels.update([], [{ x: 0, y: 0 }], 100);
-  assert.equal(parcels.get('c', 100)?.id, 'c');
+  parcels.update([parcel('theirs', 0, 0, 10, 'a1')], [], 0, 'me');
+  parcels.update([], [{ x: 5, y: 5 }], 100, 'me');
+  assert.equal(parcels.get('theirs', 100)?.id, 'theirs');   // its tile is out of view
+  parcels.update([], [{ x: 0, y: 0 }], 200, 'me');
+  assert.equal(parcels.get('theirs', 200), undefined);
+});
+
+test('a parcel carried mid-move is checked against its rounded tile', () => {
+  const parcels = new ParcelBeliefs(1000);
+  parcels.update([parcel('theirs', 0.6, 0, 10, 'a1')], [], 0, 'me');
+  parcels.update([], [{ x: 1, y: 0 }], 100, 'me');
+  assert.equal(parcels.get('theirs', 100), undefined);
+});
+
+test('a parcel the agent carries itself is kept when sensing leaves it out', () => {
+  const parcels = new ParcelBeliefs(1000);
+  parcels.update([parcel('mine', 0, 0, 10, 'me')], [], 0, 'me');
+  parcels.update([], [{ x: 0, y: 0 }], 100, 'me');
+  assert.equal(parcels.get('mine', 100)?.id, 'mine');
+});
+
+test('a picked-up parcel counts as carried before sensing reports it', () => {
+  const parcels = new ParcelBeliefs(1000);
+  parcels.update([parcel('p', 0, 0, 10)], [], 0, 'me');
+  parcels.pickedUp(['p', 'unknown'], 'me');
+  assert.deepEqual(parcels.carriedBy('me', 0).map(p => p.id), ['p']);
+  assert.deepEqual(parcels.free(0), []);
+});
+
+test('parcels put down are no longer carried, and delivered ones are forgotten', () => {
+  const parcels = new ParcelBeliefs(1000);
+  parcels.update([parcel('a', 0, 0, 10, 'me'), parcel('b', 0, 0, 10, 'me')], [], 0, 'me');
+  parcels.putDown(['a'], { x: 3, y: 4 }, { delivered: true });
+  parcels.putDown(['b'], { x: 3, y: 4 }, { delivered: false });
+  assert.equal(parcels.get('a', 0), undefined);
+  assert.deepEqual(parcels.get('b', 0), parcel('b', 3, 4, 10));
+  assert.deepEqual(parcels.carriedBy('me', 0), []);
 });
 
 test('a parcel seen again is updated', () => {

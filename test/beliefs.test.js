@@ -91,6 +91,35 @@ test('parcels are fed from sensing and decay with the server setting', () => {
   assert.deepEqual(beliefs.parcels.free(clock.t).map(p => [p.id, p.reward]), [['p', 7]]);
 });
 
+test('times in the beliefs follow the game clock, not the local clock', () => {
+  const { beliefs, clock } = readyBeliefs();          // CLOCK is 50 ms per frame
+  beliefs.onSensing(sensing({ frame: 1000, parcels: [{ id: 'p', x: 1, y: 0, reward: 10, carriedBy: null }] }));
+  clock.t = 10_000;                                    // 10 s on the local clock...
+  beliefs.onPing(1040);                                // ...but only 2 s on the server's
+  assert.equal(beliefs.now(), 52_000);
+  assert.equal(beliefs.parcels.get('p', beliefs.now())?.reward, 8);
+});
+
+test('the agent learns what it carries from its own pickup and putdown', () => {
+  const { beliefs } = readyBeliefs();
+  beliefs.onMap(2, 1, [...tiles().filter(t => !(t.x === 1 && t.y === 0)), { x: 1, y: 0, type: '2' }]);
+  beliefs.onSensing(sensing({ parcels: [{ id: 'p', x: 0, y: 0, reward: 10, carriedBy: null }] }));
+  beliefs.onPickup([{ id: 'p' }]);
+  assert.deepEqual(beliefs.parcels.carriedBy('me', 0).map(p => p.id), ['p']);
+  beliefs.onYou({ ...ME, x: 1, y: 0 });                // onto the delivery tile
+  beliefs.onPutdown([{ id: 'p' }]);
+  assert.deepEqual(beliefs.parcels.carriedBy('me', 0), []);
+  assert.equal(beliefs.parcels.get('p', 0), undefined);
+});
+
+test('a parcel put down off a delivery tile is left there, free', () => {
+  const { beliefs } = readyBeliefs();
+  beliefs.onSensing(sensing({ parcels: [{ id: 'p', x: 0, y: 0, reward: 10, carriedBy: 'me' }] }));
+  beliefs.onYou({ ...ME, x: 2, y: 1 });
+  beliefs.onPutdown([{ id: 'p' }]);
+  assert.deepEqual(beliefs.parcels.free(0).map(p => [p.id, p.x, p.y]), [['p', 2, 1]]);
+});
+
 test('a tile holding a crate is blocked for a short time', () => {
   const { beliefs, clock } = readyBeliefs();
   clock.t = 100;
@@ -137,6 +166,7 @@ test('listen feeds beliefs from the client', () => {
     onTile: (/** @type {Function} */ cb) => { handlers.tile = cb; },
     onSensing: (/** @type {Function} */ cb) => { handlers.sensing = cb; },
     onYou: (/** @type {Function} */ cb) => { handlers.you = cb; },
+    onPing: (/** @type {Function} */ cb) => { handlers.ping = cb; },
   }));
   const { beliefs } = makeBeliefs();
   beliefs.listen(client);
@@ -146,4 +176,6 @@ test('listen feeds beliefs from the client', () => {
   handlers.sensing(sensing({ positions: [{ x: 0, y: 0 }] }));
   assert.equal(beliefs.ready, true);
   assert.equal(beliefs.map?.lastSeen(0, 0), 0);
+  handlers.ping(20);
+  assert.equal(beliefs.now(), 1000);
 });

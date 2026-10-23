@@ -14,9 +14,9 @@ phase, tasks are small enough to finish, test and commit in one sitting.
 | Phase | What it delivers | Tasks | Status |
 |---|---|---|---|
 | 0. Setup | A connection to the game server, and what we learned from it | 1 | Done |
-| 1. Beliefs | The agent's picture of the world | 2, 3, 3b | Task 3b next |
+| 1. Beliefs | The agent's picture of the world | 2, 3, 3b | Done |
 | 2. Choosing what to do | Routes, and options with scores | 4, 5 | Done |
-| 3. Acting | An agent that plays on its own | 6, 7 | |
+| 3. Acting | An agent that plays on its own | 6, 7 | Task 6 next |
 | 4. External planner | Movement planned by PDDL | 8 | Completes Part 1 |
 | 5. Instructions in the BDI agent | Goals and constraints, written by hand | 9 | |
 | 6. The LLM agent | Instructions in plain language | 10, 11 | Completes Part 2 |
@@ -123,7 +123,7 @@ Tests should show that:
   pass
 - [x] Committed
 
-**Task 3b: Parcel beliefs on the game clock**
+**Task 3b: Parcel beliefs on the game clock** (done)
 
 Added after checking the server on 23 October ([design.md](design.md),
 sections 1 and 9). Two gaps were found: times were measured on the local
@@ -156,9 +156,12 @@ Tests should show that:
 - parcels put down on a delivery tile are forgotten, and no longer count
   as carried.
 
-- [ ] Tests written and seen to fail
-- [ ] Clock and parcel changes written; suite and type check pass
-- [ ] Committed
+- [x] Tests written and seen to fail (11 tests, one Task 3 test changed to
+  the new rule)
+- [x] Clock and parcel changes written; suite and type check pass
+- [x] Checked read-only on the server: the game time follows the ping
+  frames
+- [x] Committed
 
 **Phase 1 is finished when** the agent's whole picture of the world can be
 built from server messages and every rule above is covered by a test.

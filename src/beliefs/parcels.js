@@ -40,20 +40,53 @@ export class ParcelBeliefs {
   }
 
   /**
-   * Record the parcels in view, and forget free parcels whose tile is in view
-   * but which are no longer there.
+   * Record the parcels in view, and forget parcels whose last tile is in view
+   * but which are no longer there: taken, carried away or delivered. The
+   * parcels the agent carries itself are kept, since they are tracked from
+   * its own pickups and putdowns.
    * @param {Parcel[]} parcels
    * @param {Position[]} inView
    * @param {number} now
+   * @param {string} [selfId]  the agent's own id
    */
-  update(parcels, inView, now) {
+  update(parcels, inView, now, selfId) {
     const seen = new Set(parcels.map(p => p.id));
     /** @type {Set<TileKey>} */
     const viewed = new Set(inView.map(({ x, y }) => key(x, y)));
     for (const [id, { parcel }] of this.#known) {
-      if (!seen.has(id) && !parcel.carriedBy && viewed.has(key(parcel.x, parcel.y))) this.#known.delete(id);
+      if (seen.has(id) || (selfId !== undefined && parcel.carriedBy === selfId)) continue;
+      if (viewed.has(key(Math.round(parcel.x), Math.round(parcel.y)))) this.#known.delete(id);
     }
     for (const parcel of parcels) this.#known.set(parcel.id, { parcel: { ...parcel }, seenAt: now });
+  }
+
+  /**
+   * These parcels were just picked up by `agentId`. Parcels never seen are
+   * ignored: their value is unknown until sensing reports them.
+   * @param {string[]} ids
+   * @param {string} agentId
+   */
+  pickedUp(ids, agentId) {
+    for (const id of ids) {
+      const entry = this.#known.get(id);
+      if (entry) entry.parcel.carriedBy = agentId;
+    }
+  }
+
+  /**
+   * These parcels were just put down at `at`: forgotten if delivered, else
+   * left there, free.
+   * @param {string[]} ids
+   * @param {Position} at
+   * @param {{ delivered: boolean }} how
+   */
+  putDown(ids, at, { delivered }) {
+    for (const id of ids) {
+      const entry = this.#known.get(id);
+      if (!entry) continue;
+      if (delivered) this.#known.delete(id);
+      else entry.parcel = { ...entry.parcel, x: at.x, y: at.y, carriedBy: null };
+    }
   }
 
   /**

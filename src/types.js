@@ -164,6 +164,7 @@
  * @property {(callback: (tile: Tile) => void) => void} onTile
  * @property {(callback: (sensing: Sensing) => void) => void} onSensing
  * @property {(callback: (me: AgentState) => void) => void} onYou
+ * @property {(callback: (frame: number) => void) => void} onPing  the server's frame, about once a second
  */
 
 /**

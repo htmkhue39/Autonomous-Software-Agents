@@ -1,6 +1,7 @@
 import { GridMap } from './map.js';
 import { ParcelBeliefs, decayIntervalMs } from './parcels.js';
 import { AgentBeliefs } from './agents.js';
+import { GameClock } from './clock.js';
 
 /**
  * @typedef {import('../types.js').AgentState} AgentState
@@ -11,8 +12,10 @@ import { AgentBeliefs } from './agents.js';
  */
 
 /**
- * Everything the agent believes, fed by the server's messages. Every update
- * is announced to `onChange` listeners so the agent can rethink.
+ * Everything the agent believes, fed by the server's messages and the
+ * results of its own pickups and putdowns. Times are the server's game time
+ * (`now()`). Every update is announced to `onChange` listeners so the agent
+ * can rethink.
  */
 export class Beliefs {
   /** @type {ServerConfig | undefined} */
@@ -26,13 +29,19 @@ export class Beliefs {
 
   /**
    * @param {{ now?: () => number, agentTtlMs: number, blockedTtlMs: number, maxBlockedMs?: number }} options
+   *   `now` is the local clock, which carries the game time between frames
    */
   constructor({ now = Date.now, agentTtlMs, blockedTtlMs, maxBlockedMs }) {
-    this.now = now;
+    this.clock = new GameClock(now);
     this.blockedTtlMs = blockedTtlMs;
     this.maxBlockedMs = maxBlockedMs;
     this.parcels = new ParcelBeliefs(Infinity);
     this.agents = new AgentBeliefs(agentTtlMs);
+  }
+
+  /** The server's game time, in milliseconds. */
+  now() {
+    return this.clock.now();
   }
 
   /** The server settings, the map and the agent's own position are all known. */
@@ -52,11 +61,13 @@ export class Beliefs {
     client.onTile(tile => this.onTile(tile));
     client.onYou(me => this.onYou(me));
     client.onSensing(sensing => this.onSensing(sensing));
+    client.onPing(frame => this.onPing(frame));
   }
 
   /** @param {ServerConfig} config */
   onConfig(config) {
     this.config = config;
+    this.clock.setFrameMs(config.CLOCK);
     this.parcels.decayMs = decayIntervalMs(config.GAME.parcels.decaying_event, config.CLOCK);
     this.#changed();
   }
@@ -87,13 +98,44 @@ export class Beliefs {
   }
 
   /** @param {Sensing} sensing */
-  onSensing({ positions, agents, parcels, crates, self }) {
+  onSensing({ frame, positions, agents, parcels, crates, self }) {
+    if (frame !== undefined) this.clock.onFrame(frame);
     const now = this.now();
     const myId = self?.id ?? this.me?.id;
     this.map?.markSeen(positions, now);
     for (const { x, y } of crates) this.map?.block(x, y, now + this.blockedTtlMs);
-    this.parcels.update(parcels, positions, now);
+    this.parcels.update(parcels, positions, now, myId);
     this.agents.update(agents.filter(a => a.id !== myId), now);
+    this.#changed();
+  }
+
+  /**
+   * A ping only moves the game clock on; nothing to rethink.
+   * @param {number} frame
+   */
+  onPing(frame) {
+    this.clock.onFrame(frame);
+  }
+
+  /**
+   * The parcels the agent's pickup returned are now carried by it.
+   * @param {{ id: string }[]} picked
+   */
+  onPickup(picked) {
+    if (!this.me) return;
+    this.parcels.pickedUp(picked.map(p => p.id), this.me.id);
+    this.#changed();
+  }
+
+  /**
+   * The parcels the agent's putdown returned are no longer carried; on a
+   * delivery tile they are delivered and forgotten.
+   * @param {{ id: string }[]} dropped
+   */
+  onPutdown(dropped) {
+    if (!this.me) return;
+    const { x, y } = this.me;
+    this.parcels.putDown(dropped.map(p => p.id), { x, y }, { delivered: this.map?.typeAt(x, y) === '2' });
     this.#changed();
   }
 

@@ -28,7 +28,9 @@ Four things make this a real decision problem rather than a simple route:
 
 - **Parcels lose value over time.** On the course server a parcel loses one
   point every second, and a typical parcel starts around 30. Slow choices
-  cost points on everything the agent carries.
+  cost points on everything the agent carries. The server's game clock
+  drives this: its settings give the decay interval, and its frames count
+  the time, so the agent must follow the server's clock, not its own.
 - **The agent only sees nearby.** It sees 5 tiles around itself. Anything
   further away it has to remember, and its memory can be out of date.
 - **Other agents share the map.** They block tiles and may take a parcel

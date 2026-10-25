@@ -105,7 +105,7 @@ export class Beliefs {
     this.map?.markSeen(positions, now);
     for (const { x, y } of crates) this.map?.block(x, y, now + this.blockedTtlMs);
     this.parcels.update(parcels, positions, now, myId);
-    this.agents.update(agents.filter(a => a.id !== myId), now);
+    this.agents.update(agents.filter(a => a.id !== myId), positions, now);
     this.#changed();
   }
 

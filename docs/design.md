@@ -63,7 +63,9 @@ reports:
   forgotten right after the putdown.
 - **Other agents.** Where each was last seen and when. A tile where an
   agent was seen in the last few seconds counts as blocked; after that the
-  agent has probably moved on.
+  agent has probably moved on. As with parcels, an agent is forgotten
+  sooner if the agent looks at the tile where it was last seen and it is
+  not there.
 - **Itself.** Position, score and the parcels it carries.
 
 They are *beliefs*, not facts, because they can be wrong: a parcel seen ten

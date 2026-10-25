@@ -14,7 +14,7 @@ phase, tasks are small enough to finish, test and commit in one sitting.
 | Phase | What it delivers | Tasks | Status |
 |---|---|---|---|
 | 0. Setup | A connection to the game server, and what we learned from it | 1 | Done |
-| 1. Beliefs | The agent's picture of the world | 2, 3, 3b | Done |
+| 1. Beliefs | The agent's picture of the world | 2, 3, 3b, 3c | Done |
 | 2. Choosing what to do | Routes, and options with scores | 4, 5 | Done |
 | 3. Acting | An agent that plays on its own | 6, 7 | Task 6 next |
 | 4. External planner | Movement planned by PDDL | 8 | Completes Part 1 |
@@ -161,6 +161,33 @@ Tests should show that:
 - [x] Clock and parcel changes written; suite and type check pass
 - [x] Checked read-only on the server: the game time follows the ping
   frames
+- [x] Committed
+
+**Task 3c: Forget agents that are seen to have left** (done)
+
+Added on 25 October. Parcels are forgotten as soon as their tile is seen
+empty, but another agent's last tile stayed blocked for the full
+`agentTtlMs` even when that tile was in view and plainly empty, so A\*
+could detour around a free tile for up to three seconds.
+
+Files: `src/beliefs/agents.js`, `src/beliefs/index.js`, and their tests.
+
+What it should do:
+
+- Forget another agent when the tile where it was last seen is in view and
+  the agent is not there.
+- Keep it, until `agentTtlMs` passes, while that tile is out of view.
+
+Tests should show that:
+
+- an agent is forgotten, and its tile no longer blocked, once its last tile
+  is seen without it;
+- it is kept while that tile is out of view;
+- an agent that moved within view is kept at its new tile.
+
+- [x] Tests written and seen to fail (4 tests, three Task 3 tests changed
+  to pass the tiles in view)
+- [x] Agent change written; suite and type check pass
 - [x] Committed
 
 **Phase 1 is finished when** the agent's whole picture of the world can be

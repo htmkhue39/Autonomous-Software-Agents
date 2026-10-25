@@ -179,3 +179,10 @@ test('listen feeds beliefs from the client', () => {
   handlers.ping(20);
   assert.equal(beliefs.now(), 1000);
 });
+
+test('another agent is forgotten once sensing shows its tile without it', () => {
+  const { beliefs } = readyBeliefs();
+  beliefs.onSensing(sensing({ positions: [{ x: 2, y: 1 }], agents: [{ ...ME, id: 'other', x: 2, y: 1 }] }));
+  beliefs.onSensing(sensing({ positions: [{ x: 2, y: 1 }] }));
+  assert.deepEqual([...beliefs.agents.occupied(0)], []);
+});

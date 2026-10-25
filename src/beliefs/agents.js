@@ -2,6 +2,7 @@ import { key } from './map.js';
 
 /**
  * @typedef {import('../types.js').AgentState} AgentState
+ * @typedef {import('../types.js').Position} Position
  * @typedef {import('../types.js').TileKey} TileKey
  */
 
@@ -16,7 +17,8 @@ import { key } from './map.js';
 
 /**
  * What the agent believes about other agents: where each was last seen, and
- * when. Only recent sightings count as obstacles.
+ * when. Only recent sightings count as obstacles, and an agent is forgotten
+ * once its last tile is seen without it.
  */
 export class AgentBeliefs {
   /** @type {Map<string, SeenAgent>} */
@@ -28,10 +30,19 @@ export class AgentBeliefs {
   }
 
   /**
+   * Record the agents in view, and forget agents whose last tile is in view
+   * but which are no longer there.
    * @param {AgentState[]} agents  other agents in view
+   * @param {Position[]} inView
    * @param {number} now
    */
-  update(agents, now) {
+  update(agents, inView, now) {
+    const seen = new Set(agents.map(a => a.id));
+    /** @type {Set<TileKey>} */
+    const viewed = new Set(inView.map(({ x, y }) => key(x, y)));
+    for (const [id, { x, y }] of this.#seen) {
+      if (!seen.has(id) && viewed.has(key(x, y))) this.#seen.delete(id);
+    }
     for (const { id, name, x, y } of agents) {
       this.#seen.set(id, { id, name, x: Math.round(x), y: Math.round(y), seenAt: now });
     }

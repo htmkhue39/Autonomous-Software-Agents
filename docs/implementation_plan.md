@@ -11,7 +11,7 @@ The order in which the agent is built. What it must do is in
 | 0. Setup | Connection to the server, observations | 1 | Done |
 | 1. Beliefs | The agent's picture of the world | 2, 3, 3b, 3c, 3d | Done |
 | 2. Choosing what to do | Routes, and options with scores | 4, 5 | Done |
-| 3. Acting | An agent that plays on its own | 6, 7 | Task 6 next |
+| 3. Acting | An agent that plays on its own | 6, 7 | Task 7 next |
 | 4. External planner | Movement planned by PDDL | 8 | Completes Part 1 |
 | 5. Instructions in the BDI agent | Hand-written goals and constraints | 9 | |
 | 6. The LLM agent | Instructions in plain language | 10, 11 | Completes Part 2 |
@@ -49,12 +49,18 @@ before changing a test. If the plan is wrong, fix it here.
   forgotten only once both are seen without it.
 - **Task 4, A\*.** Shortest routes that avoid walls, occupied and forbidden
   tiles; closest of several targets. A refused move is remembered and
-  avoided for longer each time it is refused again; Task 6 must call
-  `failMove` and `moveSucceeded` after each step.
+  avoided for longer each time it is refused again.
 - **Task 5, scoring and options.** A trip is worth the reward left at
   delivery. Options: pickup, deliver, explore; worthless ones dropped, the
   rest sorted best first. Energy is left out until the course staff say
   whether it is active.
+- **Task 6, movement and plans.** `moveTo` walks one step at a time with a
+  fresh route each step from a planner passed in (`astarRoute`), stops
+  when told, records refused and unanswered moves, and gives up after three
+  failures. Before each step it acts on the spot: picks up free parcels on
+  its tile and puts down on a delivery tile. One plan per kind of option;
+  deliver heads for the nearest delivery tile that can be reached. Tested
+  against a fake game server in `test/helpers.js`.
 
 ---
 
@@ -62,41 +68,6 @@ before changing a test. If the plan is wrong, fix it here.
 
 Design sections 3 and 4. At the end of this phase the agent plays on its
 own.
-
-**Task 6: Movement and plans**
-
-Files: `src/plans/moveTo.js`, `src/plans/library.js`, a fake game server in
-the test helpers, and the tests.
-
-- Walk to a target one step at a time, planning a fresh route before each
-  step and taking its first move. The route planner is passed in (A\* or
-  PDDL).
-- Stop when told to, before each step.
-- After a failed or unanswered move call `failMove` and try another route;
-  after a move that works call `moveSucceeded`. Give up after three
-  failures.
-- One plan per kind of option: go to a tile; pick up (walk, pick up, fail
-  and forget the parcel if it is gone); deliver (walk, put down); explore
-  (walk). Pickup and putdown results go into the beliefs.
-- Act on the spot: after each step, pick up when standing on a free parcel
-  with room to carry it, and put down when standing on a delivery tile
-  while carrying, whatever the plan is for.
-- When the nearest delivery tile has no route (for example an agent stands
-  on it), deliver heads for the nearest one that can be reached.
-- The fake server moves the agent in its beliefs, and can make moves fail
-  or go unanswered on chosen tiles and set what a pickup returns.
-
-Tests show: the target is reached; the walk stops when told; a refused move
-is walked around; it gives up when the only route keeps failing; an
-unanswered move counts as a failure; pickup and deliver walk first and then
-act; a parcel someone else took makes pickup fail; a parcel or delivery
-tile passed on the way is used; deliver reaches another delivery tile when
-the nearest is occupied; every kind of option has exactly one plan.
-
-- [ ] Fake game server
-- [ ] Tests written and seen to fail
-- [ ] Movement and plans written; suite and type check pass
-- [ ] Committed
 
 **Task 7: Intentions and the agent loop**
 

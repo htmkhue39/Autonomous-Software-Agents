@@ -89,6 +89,11 @@ export class ParcelBeliefs {
     }
   }
 
+  /** @param {string} id */
+  forget(id) {
+    this.#known.delete(id);
+  }
+
   /**
    * The parcel with its estimated value at `now`, or undefined if unknown or
    * worthless (and then forgotten).

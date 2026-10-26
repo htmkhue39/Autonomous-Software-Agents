@@ -188,6 +188,14 @@ up the intention and deliberates again. A move the server does not answer
 within one second is treated as a failed move, so the agent never crashes
 on a slow network.
 
+**Before every step the agent also acts on the spot**, whatever it is
+walking for: it picks up free parcels on its tile while it has room, and
+puts everything down when it stands on a delivery tile while carrying. A
+parcel passed on the way is never left behind, and the pickup and deliver
+plans only walk and then check that the parcels were picked up or
+delivered. Delivering heads for the nearest delivery tile that can be
+reached, so one occupied by another agent is simply passed over.
+
 The other surprises are handled the same way: the beliefs are corrected
 and the loop carries on.
 

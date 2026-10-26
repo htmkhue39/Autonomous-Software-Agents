@@ -1,6 +1,7 @@
 import { key } from '../beliefs/map.js';
 
 /**
+ * @typedef {import('../beliefs/index.js').Beliefs} Beliefs
  * @typedef {import('../beliefs/map.js').GridMap} GridMap
  * @typedef {import('../types.js').Direction} Direction
  * @typedef {import('../types.js').PathOptions} PathOptions
@@ -19,6 +20,20 @@ import { key } from '../beliefs/map.js';
  */
 export function findPath(map, from, to, options) {
   return findNearest(map, from, [to], options)?.path ?? null;
+}
+
+/**
+ * The route planner for plans: A* from `from` to the nearest of `targets`,
+ * around the tiles of agents seen recently.
+ * @param {Beliefs} beliefs
+ * @param {Position} from
+ * @param {Position[]} targets
+ * @returns {{ target: Position, path: Direction[] } | null}
+ */
+export function astarRoute(beliefs, from, targets) {
+  if (!beliefs.map) return null;
+  const now = beliefs.now();
+  return findNearest(beliefs.map, from, targets, { now, occupied: beliefs.agents.occupied(now) });
 }
 
 /**

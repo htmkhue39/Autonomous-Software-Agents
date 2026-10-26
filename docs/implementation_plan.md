@@ -78,14 +78,20 @@ the test helpers, and the tests.
 - One plan per kind of option: go to a tile; pick up (walk, pick up, fail
   and forget the parcel if it is gone); deliver (walk, put down); explore
   (walk). Pickup and putdown results go into the beliefs.
+- Act on the spot: after each step, pick up when standing on a free parcel
+  with room to carry it, and put down when standing on a delivery tile
+  while carrying, whatever the plan is for.
+- When the nearest delivery tile has no route (for example an agent stands
+  on it), deliver heads for the nearest one that can be reached.
 - The fake server moves the agent in its beliefs, and can make moves fail
   or go unanswered on chosen tiles and set what a pickup returns.
 
 Tests show: the target is reached; the walk stops when told; a refused move
 is walked around; it gives up when the only route keeps failing; an
 unanswered move counts as a failure; pickup and deliver walk first and then
-act; a parcel someone else took makes pickup fail; every kind of option has
-exactly one plan.
+act; a parcel someone else took makes pickup fail; a parcel or delivery
+tile passed on the way is used; deliver reaches another delivery tile when
+the nearest is occupied; every kind of option has exactly one plan.
 
 - [ ] Fake game server
 - [ ] Tests written and seen to fail
@@ -95,7 +101,9 @@ exactly one plan.
 **Task 7: Intentions and the agent loop**
 
 Files: `src/intentions/intention.js`, `src/intentions/revision.js`,
-`src/index.js`, and the tests. The observation demo script is removed.
+`src/index.js`, changes to `src/beliefs/parcels.js` and
+`src/deliberation/options.js`, and the tests. The observation demo script
+is removed.
 
 - An intention holds one option, runs its plan, and can be stopped. It
   fails when no plan fits or the plan crashes.
@@ -109,6 +117,12 @@ Files: `src/intentions/intention.js`, `src/intentions/revision.js`,
   switching rule says so.
 - Stop a pickup at once when its parcel is no longer free. The switching
   rule alone would keep it: a dead pickup and exploring are both worth 0.
+- Parcels out of view fade: weight a parcel's expected reward by the chance
+  it still exists, which falls with the time since it was seen and the
+  number of agents around. Without this, a parcel seen once stays a target
+  until its value reaches zero, which is forever when parcels never decay.
+- Skip a parcel we are bound to lose: drop the pickup option when another
+  agent is closer to the parcel and is one step away or moving towards it.
 - Start-up connects, feeds messages into beliefs, builds the plans with the
   chosen mover, and starts the loop.
 - Every message announces a change. Sensing comes only when something
@@ -116,8 +130,11 @@ Files: `src/intentions/intention.js`, `src/intentions/revision.js`,
   most once per frame if it is not.
 
 Tests show each switching rule on its own; a pickup stopped when its parcel
-is taken or vanishes; an intention running the right plan, failing when
-none fits or the plan crashes; a running plan noticing it was stopped.
+is taken or vanishes; a parcel unseen for long ranked below a fresh one
+of equal value and dropped once its chance is low; a pickup dropped when a
+closer agent heads for the parcel, and kept when it heads away; an
+intention running the right plan, failing when none fits or the plan
+crashes; a running plan noticing it was stopped.
 
 - [ ] Tests written and seen to fail
 - [ ] Intentions and loop written; suite and type check pass
@@ -248,8 +265,10 @@ with the network off (LLM reported unreachable, the agent keeps playing).
 | How long a seen agent blocks a tile | 1, 3 s | walking into agents | avoiding empty tiles |
 | PDDL time limit | 2, 5 s | falling back to A\* too often | long pauses |
 
-- [ ] Try discounting a pickup when another agent is closer to the parcel;
-  keep it only if the score improves
+- [ ] Measure how long re-scoring takes on a big map with many parcels; if
+  it is slow, compute distances between all tiles once when the map loads
+- [ ] Try waiting near spawn tiles instead of exploring on maps with few
+  of them; keep it only if the score improves
 - [ ] README: what the project is, setup, how to run each mode and the
   tests, code layout, reading order of the documents, results table, and
   the supported instructions

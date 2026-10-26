@@ -1,0 +1,3 @@
+[submodule "deliveroo-server"]
+	path = deliveroo-server
+	url = https://github.com/unitn-ASA/Deliveroo.js

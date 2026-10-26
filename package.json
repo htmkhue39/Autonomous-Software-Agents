@@ -6,12 +6,14 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test 'test/*.test.js'",
     "start": "node src/index.js",
     "observe": "node src/observe.js",
     "typecheck": "npx -y -p typescript tsc -p jsconfig.json",
     "path": "node src/follow-path.js",
-    "deliver": "node src/pickup-deliver.js"
+    "deliver": "node src/pickup-deliver.js",
+    "server:install": "git submodule update --init && npm install --prefix deliveroo-server --no-audit --no-fund",
+    "server": "cd deliveroo-server/backend && node index.js -p 8080 -g ../packages/@unitn-asa/deliveroo-js-assets/assets/games/${GAME:-rectangles}.json"
   },
   "repository": {
     "type": "git",

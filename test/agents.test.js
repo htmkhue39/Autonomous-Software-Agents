@@ -14,9 +14,8 @@ function agent(id, x, y) {
 
 test('other agents block their tile, at rounded positions', () => {
   const agents = new AgentBeliefs(3000);
-  agents.update([agent('a', 2, 3), agent('b', 4.6, 1.4)], [], 0);
-  assert.deepEqual([...agents.occupied(0)].sort(), ['2,3', '5,1']);
-  assert.deepEqual(agents.get('b'), { id: 'b', name: 'b', x: 5, y: 1, seenAt: 0 });
+  agents.update([agent('a', 2, 3), agent('b', 4.6, 1)], [], 0);
+  assert.deepEqual(agents.get('b'), { id: 'b', name: 'b', x: 5, y: 1, tiles: ['4,1', '5,1'], seenAt: 0 });
 });
 
 test('only recently seen agents block tiles', () => {
@@ -53,5 +52,31 @@ test('an agent that moved within view is kept at its new tile', () => {
   const agents = new AgentBeliefs(3000);
   agents.update([agent('a', 0, 0)], [{ x: 0, y: 0 }, { x: 1, y: 0 }], 0);
   agents.update([agent('a', 1, 0)], [{ x: 0, y: 0 }, { x: 1, y: 0 }], 500);
-  assert.deepEqual(agents.get('a'), { id: 'a', name: 'a', x: 1, y: 0, seenAt: 500 });
+  assert.deepEqual(agents.get('a'), { id: 'a', name: 'a', x: 1, y: 0, tiles: ['1,0'], seenAt: 500 });
+});
+
+test('an agent between two tiles blocks both', () => {
+  const agents = new AgentBeliefs(3000);
+  agents.update([agent('a', 3.6, 2), agent('b', 0, 4.4)], [], 0);
+  assert.deepEqual([...agents.occupied(0)].sort(), ['0,4', '0,5', '3,2', '4,2']);
+});
+
+test('an agent on a whole tile blocks only that tile', () => {
+  const agents = new AgentBeliefs(3000);
+  agents.update([agent('a', 3, 2)], [], 0);
+  assert.deepEqual([...agents.occupied(0)], ['3,2']);
+});
+
+test('an agent between two tiles is kept while one of them is out of view', () => {
+  const agents = new AgentBeliefs(3000);
+  agents.update([agent('a', 3.6, 2)], [], 0);
+  agents.update([], [{ x: 4, y: 2 }], 500);
+  assert.deepEqual([...agents.occupied(500)].sort(), ['3,2', '4,2']);
+});
+
+test('an agent between two tiles is forgotten once both are seen without it', () => {
+  const agents = new AgentBeliefs(3000);
+  agents.update([agent('a', 3.6, 2)], [], 0);
+  agents.update([], [{ x: 3, y: 2 }, { x: 4, y: 2 }], 500);
+  assert.equal(agents.get('a'), undefined);
 });

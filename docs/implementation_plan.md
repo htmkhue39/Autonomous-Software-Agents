@@ -61,6 +61,10 @@ before changing a test. If the plan is wrong, fix it here.
   its tile and puts down on a delivery tile. One plan per kind of option;
   deliver heads for the nearest delivery tile that can be reached. Tested
   against a fake game server in `test/helpers.js`.
+- **Local server and pickup replies.** The course server's code is linked
+  as `deliveroo-server/` and runs locally with `npm run server`. A first
+  live run showed that pickup and putdown replies carry no parcel ids, so
+  the beliefs now match those parcels by tile (design section 9).
 
 ---
 

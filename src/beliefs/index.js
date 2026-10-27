@@ -118,24 +118,30 @@ export class Beliefs {
   }
 
   /**
-   * The parcels the agent's pickup returned are now carried by it.
-   * @param {{ id: string }[]} picked
+   * The agent's pickup returned these parcels. The server's reply carries no
+   * parcel ids (design.md section 9), so only whether it is empty counts:
+   * if not, the free parcels believed on the agent's tile are now carried
+   * by it; if so, they are gone.
+   * @param {unknown[]} picked
    */
   onPickup(picked) {
     if (!this.me) return;
-    this.parcels.pickedUp(picked.map(p => p.id), this.me.id);
+    const { x, y } = this.me;
+    if (picked.length > 0) this.parcels.pickedUpAt({ x, y }, this.me.id);
+    else this.parcels.forgetFreeAt({ x, y });
     this.#changed();
   }
 
   /**
-   * The parcels the agent's putdown returned are no longer carried; on a
-   * delivery tile they are delivered and forgotten.
-   * @param {{ id: string }[]} dropped
+   * The agent's putdown returned these parcels. If any, everything it carried
+   * is on its tile now: delivered and forgotten on a delivery tile, else
+   * left there, free.
+   * @param {unknown[]} dropped
    */
   onPutdown(dropped) {
-    if (!this.me) return;
+    if (!this.me || dropped.length === 0) return;
     const { x, y } = this.me;
-    this.parcels.putDown(dropped.map(p => p.id), { x, y }, { delivered: this.map?.typeAt(x, y) === '2' });
+    this.parcels.putDownAll(this.me.id, { x, y }, { delivered: this.map?.typeAt(x, y) === '2' });
     this.#changed();
   }
 

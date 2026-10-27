@@ -61,37 +61,44 @@ export class ParcelBeliefs {
   }
 
   /**
-   * These parcels were just picked up by `agentId`. Parcels never seen are
-   * ignored: their value is unknown until sensing reports them.
-   * @param {string[]} ids
+   * `agentId` just picked up the parcels on `at`: the free parcels believed
+   * there are now carried by it. The server's reply does not say which
+   * parcels they were, only that there were some.
+   * @param {Position} at
    * @param {string} agentId
    */
-  pickedUp(ids, agentId) {
-    for (const id of ids) {
-      const entry = this.#known.get(id);
-      if (entry) entry.parcel.carriedBy = agentId;
-    }
+  pickedUpAt(at, agentId) {
+    for (const entry of this.#freeAt(at)) entry.parcel.carriedBy = agentId;
   }
 
   /**
-   * These parcels were just put down at `at`: forgotten if delivered, else
-   * left there, free.
-   * @param {string[]} ids
+   * Nothing could be picked up on `at`: the free parcels believed there are
+   * gone.
+   * @param {Position} at
+   */
+  forgetFreeAt(at) {
+    for (const entry of this.#freeAt(at)) this.#known.delete(entry.parcel.id);
+  }
+
+  /**
+   * `agentId` just put down everything it carried on `at`: forgotten if
+   * delivered, else left there, free.
+   * @param {string} agentId
    * @param {Position} at
    * @param {{ delivered: boolean }} how
    */
-  putDown(ids, at, { delivered }) {
-    for (const id of ids) {
-      const entry = this.#known.get(id);
-      if (!entry) continue;
+  putDownAll(agentId, at, { delivered }) {
+    for (const [id, entry] of this.#known) {
+      if (entry.parcel.carriedBy !== agentId) continue;
       if (delivered) this.#known.delete(id);
       else entry.parcel = { ...entry.parcel, x: at.x, y: at.y, carriedBy: null };
     }
   }
 
-  /** @param {string} id */
-  forget(id) {
-    this.#known.delete(id);
+  /** @param {Position} at */
+  #freeAt({ x, y }) {
+    return [...this.#known.values()].filter(({ parcel }) =>
+      !parcel.carriedBy && Math.round(parcel.x) === x && Math.round(parcel.y) === y);
   }
 
   /**

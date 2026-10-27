@@ -58,8 +58,7 @@ export async function moveTo(ctx, targets, signal) {
 
 /**
  * Pick up free parcels on the agent's tile while it has room, and put
- * everything down on a delivery tile, whatever the walk is for. Parcels
- * believed here but not picked up are gone, and forgotten.
+ * everything down on a delivery tile, whatever the walk is for.
  * @param {PlanContext} ctx
  */
 async function actOnTheSpot({ beliefs, client }) {
@@ -75,8 +74,5 @@ async function actOnTheSpot({ beliefs, client }) {
 
   const here = beliefs.parcels.free(now).filter(p => Math.round(p.x) === me.x && Math.round(p.y) === me.y);
   if (here.length === 0 || carried.length >= config.GAME.player.capacity) return;
-  const picked = await client.pickup();
-  beliefs.onPickup(picked);
-  const pickedIds = new Set(picked.map(p => p.id));
-  for (const parcel of here) if (!pickedIds.has(parcel.id)) beliefs.parcels.forget(parcel.id);
+  beliefs.onPickup(await client.pickup());
 }

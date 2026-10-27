@@ -59,7 +59,8 @@ export function readyBeliefs(rows, me, { capacity = 5 } = {}) {
  * fail. Moves into `refuseInto` tiles are refused; moves into `lateInto`
  * tiles happen but are answered too late, so the client reports failure.
  * `parcelsAt` holds the parcels really lying on each tile, which a pickup
- * takes; a putdown drops all carried parcels.
+ * takes; a putdown drops all carried parcels. Pickup and putdown reply as the
+ * real server does, with the parcels but without their ids.
  * @param {import('../src/beliefs/index.js').Beliefs} beliefs
  * @param {{ refuseInto?: string[], lateInto?: string[], parcelsAt?: Record<string, string[]>, carried?: string[] }} [setup]
  */
@@ -97,7 +98,7 @@ export function fakeGame(beliefs, { refuseInto = [], lateInto = [], parcelsAt = 
         const here = parcelsAt[key(me.x, me.y)] ?? [];
         parcelsAt[key(me.x, me.y)] = [];
         game.carried.push(...here);
-        return here.map(id => ({ id }));
+        return here.map(() => serverReply(me));
       },
       async putdown() {
         const me = /** @type {import('../src/types.js').AgentState} */ (beliefs.me);
@@ -105,9 +106,18 @@ export function fakeGame(beliefs, { refuseInto = [], lateInto = [], parcelsAt = 
         game.carried = [];
         if (beliefs.map?.typeAt(me.x, me.y) === '2') game.delivered.push(...dropped);
         else parcelsAt[key(me.x, me.y)] = [...(parcelsAt[key(me.x, me.y)] ?? []), ...dropped];
-        return dropped.map(id => ({ id }));
+        return dropped.map(() => serverReply(me));
       },
     },
   };
   return game;
+}
+
+/**
+ * One parcel in a pickup or putdown reply, shaped as the real server sends
+ * it: the parcel's private id is lost on the way (design.md section 9).
+ * @param {import('../src/types.js').Position} at
+ */
+function serverReply(at) {
+  return { xy: { x: at.x, y: at.y }, reward: 10, expired: false };
 }

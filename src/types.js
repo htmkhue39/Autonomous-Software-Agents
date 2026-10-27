@@ -157,8 +157,8 @@
  * @typedef {Object} Client
  * @property {any} socket  the SDK socket, for anything not wrapped here (messages, token event)
  * @property {(dir: Direction) => Promise<Position | false>} move
- * @property {() => Promise<{ id: string }[]>} pickup
- * @property {() => Promise<{ id: string }[]>} putdown
+ * @property {() => Promise<unknown[]>} pickup   the parcels picked up, without their ids
+ * @property {() => Promise<unknown[]>} putdown  the parcels put down, without their ids
  * @property {(callback: (config: ServerConfig) => void) => void} onConfig
  * @property {(callback: (width: number, height: number, tiles: Tile[]) => void) => void} onMap
  * @property {(callback: (tile: Tile) => void) => void} onTile

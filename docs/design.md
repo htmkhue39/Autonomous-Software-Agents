@@ -354,6 +354,16 @@ Things learned by connecting to the course server (map `long_hallways`,
   energy is on, a move takes 0.1 s, and the settings give no `PENALTY`.
   Its `missions` plugin runs a red light / green light game announced by
   messages from "mission-master": moving on red costs 15 points.
+- Pickup and putdown replies carry the parcels **without their ids**,
+  although the SDK's types promise `{ id }`: the server keeps a parcel's id
+  in a private field, which is lost when the reply is sent. So the agent
+  only looks at whether a reply is empty, and matches parcels by tile: a
+  pickup that returns something makes the free parcels on its tile carried,
+  an empty one means they are gone, and a putdown that returns something
+  means everything it carried is on its tile.
+- The course server runs Deliveroo.js 3.0.3 (commit `e18b1e7`), which is
+  linked into this repository as `deliveroo-server/`. `npm run server`
+  starts a local copy with the same map, where we have admin rights.
 
 Open questions:
 

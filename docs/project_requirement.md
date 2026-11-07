@@ -35,8 +35,12 @@ Four things make this a real decision problem rather than a simple route:
   further away it has to remember, and its memory can be out of date.
 - **Other agents share the map.** They block tiles and may take a parcel
   first.
-- **Mistakes cost points.** A move into a wall or another agent fails and
-  costs one point.
+- **Mistakes count as warnings, and too many get the agent kicked.** A
+  move into a wall or onto a tile another agent holds is refused at once:
+  the agent stays put. It costs no points, but the server counts it as a
+  warning, and an agent reaching 1000 warnings is disconnected. A failed
+  pickup or putdown, or an action sent before the previous one finished,
+  is also a warning.
 
 Other numbers from the course server: the agent carries at most 5 parcels,
 a move takes about 0.2 seconds, and a new parcel appears every 2 seconds,

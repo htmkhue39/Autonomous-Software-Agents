@@ -48,9 +48,16 @@
  * @property {number} x
  * @property {number} y
  * @property {number} score
- * @property {number} [penalty]
+ * @property {Attribute[]} [attributes]  e.g. warnings, energy
  * @property {string} [teamId]
  * @property {string} [teamName]
+ */
+
+/**
+ * A value the server attaches to an agent. `warnings` counts the agent's
+ * refused actions; the server disconnects it at 1000. Failed moves cost no
+ * points.
+ * @typedef {{ kind: string, value: number | string, max?: number }} Attribute
  */
 
 /**
@@ -127,7 +134,6 @@
  * The `config` event.
  * @typedef {Object} ServerConfig
  * @property {number} CLOCK     milliseconds per frame
- * @property {number} PENALTY   points lost per wrong move
  * @property {number} AGENT_TIMEOUT
  * @property {GameRules} GAME
  */
@@ -179,7 +185,6 @@
  * @property {number} utility     expected reward on delivery
  * @property {0 | 1} priority
  * @property {string} [parcelId]  for 'pickup'
- * @property {string} [goalId]    set when the option comes from a user goal
  */
 
 /**
@@ -193,34 +198,6 @@
  * @property {number} now                                    milliseconds
  * @property {Set<TileKey>} [occupied]                       tiles held by other agents
  * @property {(x: number, y: number) => boolean} [forbidden] tiles ruled out by directives
- */
-
-/**
- * @typedef {{ x1: number, y1: number, x2: number, y2: number }} Rect
- */
-
-/**
- * An instruction from the user, produced by the LLM agent and validated
- * before use.
- * @typedef {{ type: 'goto', x: number, y: number }
- *   | { type: 'pickup', parcelId: string }
- *   | { type: 'deliverNow' }
- *   | { type: 'pause' } | { type: 'resume' } | { type: 'clear' }
- *   | { type: 'avoidArea', rect: Rect }
- *   | { type: 'stayInArea', rect: Rect }
- *   | { type: 'minParcelReward', value: number }
- *   | { type: 'maxCarried', value: number }} Directive
- */
-
-/** @typedef {'pending' | 'active' | 'done' | 'failed'} GoalStatus */
-
-/**
- * A user goal being tracked by the agent.
- * @typedef {Object} Goal
- * @property {string} id
- * @property {Directive} directive
- * @property {GoalStatus} status
- * @property {string} [reason]  why it failed
  */
 
 export {};

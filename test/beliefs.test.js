@@ -8,7 +8,6 @@ import { Beliefs } from '../src/beliefs/index.js';
 function serverConfig(decay = /** @type {import('../src/types.js').ClockEvent} */ ('1s')) {
   return {
     CLOCK: 50,
-    PENALTY: 1,
     AGENT_TIMEOUT: 10000,
     GAME: {
       title: 'test',

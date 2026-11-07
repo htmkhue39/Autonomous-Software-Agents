@@ -39,7 +39,6 @@ export function readyBeliefs(rows, me, { capacity = 5 } = {}) {
   const beliefs = new Beliefs({ now: () => clock.t, agentTtlMs: 3000, blockedTtlMs: 2000 });
   beliefs.onConfig({
     CLOCK: 50,
-    PENALTY: 1,
     AGENT_TIMEOUT: 10000,
     GAME: {
       title: 'test',

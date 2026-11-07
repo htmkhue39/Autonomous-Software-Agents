@@ -170,8 +170,10 @@ the route was made. Because A\* is so fast, replanning costs nothing, and
 each step is also a natural moment to check whether the intention is still
 worth pursuing.
 
-**When a move fails**, the agent does not simply retry, because every
-failed move costs a point. Instead the failure becomes a belief: that
+**When a move fails**, the agent does not simply retry. A refused move
+returns at once and leaves the agent where it was; it costs no points,
+but it counts as a warning, and the server disconnects an agent at 1000
+warnings. Retrying the same move would only collect warnings. Instead the failure becomes a belief: that
 move (from this tile, in this direction) is avoided for about two seconds,
 and the next route goes around it. Only the move is avoided, not the tile,
 since the tile may still be enterable from another side. If the same move
@@ -367,11 +369,14 @@ Things learned by connecting to the course server (map `long_hallways`,
 
 Open questions:
 
-- **Points lost.** Failed-move penalties, energy (active on
-  `missions_tournament`: 100 to start, 1 per move, pickup or putdown, 10
-  back every 5 s; the agent's own level is not reported) and mission
-  penalties all cost points the scoring does not count yet. Left until the
-  base agent plays on its own; energy to ask the course staff about.
+- **Points lost.** Failed moves cost no points on Deliveroo.js 3.0.3: the
+  server only counts them as warnings and disconnects an agent at 1000
+  (`deliveroo-server/backend/src/core/movement/worldRules.js`). Energy
+  (active on `missions_tournament`: 100 to start, 1 per move, pickup or
+  putdown, 10 back every 5 s; the agent's own level is not reported) and
+  mission penalties do cost points, and the scoring does not count them
+  yet. Left until the base agent plays on its own; energy to ask the course
+  staff about.
 - **Own carried parcels in sensing.** Whether sensing reports the parcels
   the agent carries itself. The design does not rely on it (section 1);
   to check in the first live run.

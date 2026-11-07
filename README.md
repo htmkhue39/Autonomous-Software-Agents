@@ -86,6 +86,10 @@ Then get a token for your agent:
 
 `.env` is git-ignored. Do not commit tokens.
 
+To try other tuning values without editing code, set them in `.env` or in
+front of a command, for example `REPLACE_MARGIN=1.5 npm start`. The list of
+variables and their defaults is at the end of `.env.example`.
+
 ## Commands
 
 | Command | What it does |

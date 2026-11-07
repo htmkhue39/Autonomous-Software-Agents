@@ -63,7 +63,11 @@ reports:
   forgotten right after the putdown.
 - **Other agents.** Where each was last seen and when. A tile where an
   agent was seen in the last few seconds counts as blocked; after that the
-  agent has probably moved on.
+  agent has probably moved on. An agent seen between two tiles, at a
+  fractional position, blocks both: until its move finishes it holds the
+  tile it is leaving as well as the one it is entering. As with parcels,
+  an agent is forgotten sooner if the agent looks at the tiles where it
+  was last seen and it is not there.
 - **Itself.** Position, score and the parcels it carries.
 
 They are *beliefs*, not facts, because they can be wrong: a parcel seen ten
@@ -166,8 +170,10 @@ the route was made. Because A\* is so fast, replanning costs nothing, and
 each step is also a natural moment to check whether the intention is still
 worth pursuing.
 
-**When a move fails**, the agent does not simply retry, because every
-failed move costs a point. Instead the failure becomes a belief: that
+**When a move fails**, the agent does not simply retry. A refused move
+returns at once and leaves the agent where it was; it costs no points,
+but it counts as a warning, and the server disconnects an agent at 1000
+warnings. Retrying the same move would only collect warnings. Instead the failure becomes a belief: that
 move (from this tile, in this direction) is avoided for about two seconds,
 and the next route goes around it. Only the move is avoided, not the tile,
 since the tile may still be enterable from another side. If the same move
@@ -183,6 +189,14 @@ After about three failures on the way to the same target, the agent gives
 up the intention and deliberates again. A move the server does not answer
 within one second is treated as a failed move, so the agent never crashes
 on a slow network.
+
+**Before every step the agent also acts on the spot**, whatever it is
+walking for: it picks up free parcels on its tile while it has room, and
+puts everything down when it stands on a delivery tile while carrying. A
+parcel passed on the way is never left behind, and the pickup and deliver
+plans only walk and then check that the parcels were picked up or
+delivered. Delivering heads for the nearest delivery tile that can be
+reached, so one occupied by another agent is simply passed over.
 
 The other surprises are handled the same way: the beliefs are corrected
 and the loop carries on.
@@ -342,14 +356,27 @@ Things learned by connecting to the course server (map `long_hallways`,
   energy is on, a move takes 0.1 s, and the settings give no `PENALTY`.
   Its `missions` plugin runs a red light / green light game announced by
   messages from "mission-master": moving on red costs 15 points.
+- Pickup and putdown replies carry the parcels **without their ids**,
+  although the SDK's types promise `{ id }`: the server keeps a parcel's id
+  in a private field, which is lost when the reply is sent. So the agent
+  only looks at whether a reply is empty, and matches parcels by tile: a
+  pickup that returns something makes the free parcels on its tile carried,
+  an empty one means they are gone, and a putdown that returns something
+  means everything it carried is on its tile.
+- The course server runs Deliveroo.js 3.0.3 (commit `e18b1e7`), which is
+  linked into this repository as `deliveroo-server/`. `npm run server`
+  starts a local copy with the same map, where we have admin rights.
 
 Open questions:
 
-- **Points lost.** Failed-move penalties, energy (active on
-  `missions_tournament`: 100 to start, 1 per move, pickup or putdown, 10
-  back every 5 s; the agent's own level is not reported) and mission
-  penalties all cost points the scoring does not count yet. Left until the
-  base agent plays on its own; energy to ask the course staff about.
+- **Points lost.** Failed moves cost no points on Deliveroo.js 3.0.3: the
+  server only counts them as warnings and disconnects an agent at 1000
+  (`deliveroo-server/backend/src/core/movement/worldRules.js`). Energy
+  (active on `missions_tournament`: 100 to start, 1 per move, pickup or
+  putdown, 10 back every 5 s; the agent's own level is not reported) and
+  mission penalties do cost points, and the scoring does not count them
+  yet. Left until the base agent plays on its own; energy to ask the course
+  staff about.
 - **Own carried parcels in sensing.** Whether sensing reports the parcels
   the agent carries itself. The design does not rely on it (section 1);
   to check in the first live run.

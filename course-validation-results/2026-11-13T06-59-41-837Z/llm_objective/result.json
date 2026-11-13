@@ -1,0 +1,107 @@
+{
+  "scenario": "llm_objective",
+  "passed": true,
+  "checks": [
+    {
+      "id": "server_shutdown_clean",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_early_agent_exit",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_early_server_exit",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_setup_error",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "not_interrupted",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "window_completed",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "llm_ready",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "objective_interpreted",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "llm_model_called",
+      "passed": true,
+      "observed": 8,
+      "required": ">=1"
+    },
+    {
+      "id": "llm_game_tool_succeeded",
+      "passed": true,
+      "observed": 5,
+      "required": ">=1"
+    },
+    {
+      "id": "llm_confirmed_delivery",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "objective_verified",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "no_uncertain_action",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    }
+  ],
+  "observed": {
+    "bdiIntentions": 0,
+    "pddlCalls": 0,
+    "pddlSuccess": 0,
+    "bdiDeliveries": 0,
+    "llmDeliveries": 1,
+    "llmModelCalls": 8,
+    "llmToolResults": 5,
+    "coordinationMessages": 0,
+    "beliefMerges": 0,
+    "llmEvacuations": 0,
+    "objectiveStarts": 0,
+    "objectiveQuarantines": 0
+  },
+  "limitations": [
+    "Local Deliveroo.js game only; not official course Challenge 1/2 evaluation.",
+    "Scores and deliveries are agent-observed, not official Tournament outcomes."
+  ],
+  "elapsedMs": 53683,
+  "startedAt": "2026-11-13T06:59:48.207Z",
+  "endedAt": "2026-11-13T07:00:41.890Z",
+  "observationLimitMs": 180000,
+  "setupError": null
+}

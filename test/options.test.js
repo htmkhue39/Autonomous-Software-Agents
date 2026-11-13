@@ -130,3 +130,9 @@ test('nothing is offered for parcels and tiles that cannot be reached', () => {
   see(beliefs, [parcel('c', 1, 10, 'me')]);
   assert.equal(listOptions(beliefs).some(o => o.type === 'deliver'), false);
 });
+
+test('unlimited capacity still permits pickup', () => {
+  const { beliefs } = world(['2313'], { x: 3, y: 0 }, { capacity: -1 });
+  see(beliefs, [parcel('c', 3, 10, 'me'), parcel('p', 1, 10)]);
+  assert.ok(listOptions(beliefs).some(o => o.id === 'pickup:p'));
+});

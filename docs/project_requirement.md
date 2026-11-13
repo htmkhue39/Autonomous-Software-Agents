@@ -1,95 +1,63 @@
 # Project requirements
 
-What the agent has to do, and why that is harder than it sounds. For how
-it works, read [design.md](design.md) next; for the order it is built in,
-[implementation_plan.md](implementation_plan.md).
+This document describes **what the final system must demonstrate**. It separates the course's required capabilities from the team's optional design choices. See [design.md](design.md) for the chosen architecture and [implementation_plan.md](implementation_plan.md) for tasks and status.
 
-Course: Autonomous Software Agents, University of Trento.
+## Goal and environment
 
-## The game
+Build autonomous JavaScript software for Deliveroo.js that earns points by collecting parcels and delivering them while handling changing observations, other agents, and failures. The environment is partially observable, and the game configuration can change between scenarios.
 
-Deliveroo.js is played on a grid of tiles. Some tiles are walls, some are
-**spawn tiles** where parcels appear, and some are **delivery tiles** where
-parcels are dropped off for points.
+Use the course's Deliveroo.js SDK (`@unitn-asa/deliveroo-js-sdk`) for ordinary game sensing, actions, and communication. Game rules such as parcel decay, carrying capacity, observation range, movement duration, penalties, plugins, and delivery tiles must be read from the actual server configuration when exposed; values observed on one map are not universal rules.
 
-```
- ┌───┬───┬───┬───┬───┐
- │ D │   │ ▓ │   │ S │     D  delivery tile
- ├───┼───┼───┼───┼───┤     S  spawn tile
- │   │   │ ▓ │ p │   │     ▓  wall
- ├───┼───┼───┼───┼───┤     p  parcel
- │ S │ A │   │   │ D │     A  our agent
- └───┴───┴───┴───┴───┘
-```
+## Part 1 — BDI autonomous agent
 
-Our agent moves one tile at a time, picks parcels up, carries several at
-once, and scores a parcel's value when it puts it down on a delivery tile.
-Four things make this a real decision problem rather than a simple route:
-
-- **Parcels lose value over time.** On the course server a parcel loses one
-  point every second, and a typical parcel starts around 30. Slow choices
-  cost points on everything the agent carries. The server's game clock
-  drives this: its settings give the decay interval, and its frames count
-  the time, so the agent must follow the server's clock, not its own.
-- **The agent only sees nearby.** It sees 5 tiles around itself. Anything
-  further away it has to remember, and its memory can be out of date.
-- **Other agents share the map.** They block tiles and may take a parcel
-  first.
-- **Mistakes cost points.** A move into a wall or another agent fails and
-  costs one point.
-
-Other numbers from the course server: the agent carries at most 5 parcels,
-a move takes about 0.2 seconds, and a new parcel appears every 2 seconds,
-up to 5 on the map at once.
-
-## What the course asks for
-
-The course defines two parts. In Part 2 the LLM does not replace the BDI
-agent: it extends how the agent can be instructed and controlled.
-
-### Part 1: an autonomous BDI agent
-
-| | Requirement | Met when |
+| ID | Required capability | Evidence of completion |
 |---|---|---|
-| R1.1 | Sense the environment and manage beliefs | The agent keeps a current picture of the map, parcels and their decaying value, other agents and itself, and forgets what is no longer true. |
-| R1.2 | Deliberate and select intentions | The agent lists what it could do, scores each option, and commits to the best one. With nothing to pick up it explores instead of standing still. |
-| R1.3 | Choose and execute plans | Each kind of intention has a plan that carries it out, and the agent scores points on the course server. |
-| R1.4 | Use an external planner | The agent can plan its movement with an online PDDL planner, and keeps playing if the planner fails. |
-| R1.5 | Replan and revise intentions | A failed move leads to a detour, a parcel taken by someone else is dropped from the agent's plans, and a clearly better option replaces the current intention. |
+| P1-01 | Maintain beliefs from sensing, including belief revision | Map, self, agents and parcels update from events; stale or contradictory observations are handled. |
+| P1-02 | Generate/select goals and intentions, including intention revision | The agent can commit, continue, reconsider, abandon and select new intentions when beliefs change. |
+| P1-03 | Use predefined plans to achieve intentions | A plan library has applicable plans, executes actions, and handles failures. |
+| P1-04 | Extend the agent with an **external automated planner** | **When an intention is activated**, the agent invokes an external planner for an executable plan; calls and results are observable in logs. |
+| P1-05 | Execute plans and replan/redeliberate in a changing environment | Failed/unavailable actions or changed objectives trigger safe recovery and appropriate replanning. |
+| P1-06 | Validate against the course's predefined simulations | Part 1 has repeatable test evidence and is ready for Challenge 1. |
 
-### Part 2: LLM + BDI agent system
+The course specifies **planner invocation at intention activation**. An internal A* implementation alone does not meet the automated-planning extension. The particular PDDL domain, solver endpoint, route representation, utility equation, and fallback policy are implementation decisions.
 
-| | Requirement | Met when |
+## Part 2 — second LLM-based software agent
+
+Part 2 **extends** Part 1 with a **second software agent**, not only a natural-language prompt parser attached to the BDI process.
+
+| ID | Required capability | Evidence of completion |
 |---|---|---|
-| R2.1 | Accept high-level instructions from the user | A person can give the agent instructions in plain language while it plays. |
-| R2.2 | Interpret them through an LLM agent | An LLM agent turns the instruction into structured commands. If the LLM fails or answers nonsense, the user is told and nothing changes. |
-| R2.3 | Translate them into goals and constraints | Instructions become goals (for example "go to this tile", "deliver now", "pause") and constraints (for example "avoid this area", "ignore cheap parcels"). Commands that make no sense in the current world are rejected with a reason. |
-| R2.4 | Coordinate with the BDI agent | User goals are pursued through the same BDI machinery, ahead of the agent's own options. Constraints shape what the agent chooses. The user hears back whether each goal succeeded or why it failed. |
+| P2-01 | Second LLM-based agent | Both agents have independent identities/connections and meaningful autonomous behavior in the same game. |
+| P2-02 | Interpret natural-language objectives | The LLM agent reads and interprets changing objectives supplied through the evaluation environment. |
+| P2-03 | Dynamic LLM memory/context | Context incorporates the current objective, game observations, available tools, tool results and relevant teammate beliefs; it changes as events arrive. |
+| P2-04 | LLM planning, tool execution and replanning | The agent uses the LLM to construct/refine a tool-executable plan, executes it, checks results and replans after important changes or failures. |
+| P2-05 | Use the course-provided tool catalog | The agent can query/use the catalog supplied by the course's tool server and validate tool calls before execution. |
+| P2-06 | Share information and coordinate with the BDI agent | Agents exchange beliefs and intentions and use that information to avoid contradictory or redundant tasks. |
+| P2-07 | Validate against the course's predefined simulations | Part 2 demonstrates coordinated behavior and is ready for Challenge 2. |
 
-Which instructions Part 2 must support, and where they come from (a
-terminal, in-game chat, or both), is still to be decided; see the open
-questions in [design.md](design.md).
+The slides explicitly leave the **LLM-agent architecture** open. ReAct, reflection, structured planning, local memory formats, provider adapters, and task allocation algorithms are choices, not individually mandated techniques.
 
-## Rules we hold ourselves to
+The course describes token-authenticated LLM infrastructure and an extended tool catalog available from a server. The exact endpoint, authentication, tool schemas and evaluation objective channel must be verified when provided. A local Ollama model is suitable for development but should **not be assumed equivalent to course infrastructure** without confirmation.
 
-- The LLM never moves the agent. It only produces goals and constraints.
-- The LLM is called only when the user gives an instruction, never in the
-  agent's own decision loop, so the agent is never slowed down by it.
-- With no instructions, the agent behaves exactly as in Part 1.
-- The agent never tries a move it believes will fail.
-- The code is plain JavaScript with no build step, and everything that does
-  not need the live server is covered by automated tests.
+## Submission
 
-## Out of scope
+- JavaScript source code.
+- Final report of **no more than 10 pages**, explaining what was built and how it works.
+- Oral project presentation.
+- Project submission by the date announced by the instructors (slides say at least one week before the exam; the exact deadline is to be provided).
 
-A team of two cooperating agents, predicting what opponents will do,
-tuning for one particular map, and the written report.
+## Team-selected baselines (not course mandates)
 
-## What success looks like
+The following design decisions are documented in [design.md](design.md), not imposed by the course:
 
-- Every requirement above can be shown, by an automated test or by a live
-  run.
-- The design is easy to explain: each part of the BDI cycle can be pointed
-  to in the code, and each design choice has a reason.
-- The agent scores well on the course server, and its scores with A\* and
-  with the PDDL planner are recorded side by side in the README.
+- Keep the existing timestamped beliefs, A*, expected-reward utility and option generation as the baseline.
+- Use a configurable, stable intention-revision rule initially based on `replaceMargin = 1.2`.
+- Use the course PDDL client for the external planner; keep A* for route estimates and fallback/comparison.
+- Build two cooperative agents with separate game identities, sharing reusable SDK and execution modules.
+- Use local Ollama (`qwen3.5:4b-q4_K_M`) during development through a provider interface, with a second adapter for the course LLM service.
+- Prefer official SDK messaging for belief and intention exchange.
+- Implement advanced policies **after** both parts work, then benchmark fairly.
+
+## External integration details to confirm
+
+**Open course details to verify:** final LLM endpoint/model policy, tool catalog and auth, objective delivery method, enabled plugins/scenarios, challenge evaluation details, and submission deadline. Do not invent these values in code or documentation.

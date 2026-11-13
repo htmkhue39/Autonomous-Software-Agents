@@ -24,6 +24,9 @@ export class Beliefs {
   map;
   /** @type {AgentState | undefined} the agent itself, at a rounded position */
   me;
+  /** @type {{x:number,y:number}|undefined} raw self position for action reconciliation */
+  rawMe;
+  get positionStable() { return !!this.rawMe && Number.isInteger(this.rawMe.x) && Number.isInteger(this.rawMe.y); }
   /** @type {(() => void)[]} */
   #listeners = [];
 
@@ -52,6 +55,12 @@ export class Beliefs {
   /** @param {() => void} callback */
   onChange(callback) {
     this.#listeners.push(callback);
+    // Temporary listeners (e.g. waiting for a pickup sensing update) must
+    // be removable; the autonomous controller's permanent listener remains.
+    return () => {
+      const index = this.#listeners.indexOf(callback);
+      if (index !== -1) this.#listeners.splice(index, 1);
+    };
   }
 
   /** @param {Client} client */
@@ -93,6 +102,7 @@ export class Beliefs {
 
   /** @param {AgentState} me */
   onYou(me) {
+    this.rawMe = { x: me.x, y: me.y };
     this.me = { ...me, x: Math.round(me.x), y: Math.round(me.y) };
     this.#changed();
   }
@@ -137,6 +147,19 @@ export class Beliefs {
     const { x, y } = this.me;
     this.parcels.putDown(dropped.map(p => p.id), { x, y }, { delivered: this.map?.typeAt(x, y) === '2' });
     this.#changed();
+  }
+
+  /** @param {import('../types.js').Parcel[]} parcels @param {number} observedAt */
+  onSharedParcels(parcels, observedAt) {
+    const added = this.parcels.mergeShared(parcels, observedAt, this.now());
+    if (added) this.#changed();
+    return added;
+  }
+
+  /** @param {string} id */
+  onPeerCollected(id) {
+    if (this.me && this.parcels.get(id, this.now())?.carriedBy === this.me.id) return;
+    if (this.parcels.forget(id)) this.#changed();
   }
 
   #changed() {

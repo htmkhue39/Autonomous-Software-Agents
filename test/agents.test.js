@@ -12,11 +12,11 @@ function agent(id, x, y) {
   return { id, name: id, x, y, score: 0 };
 }
 
-test('other agents block their tile, at rounded positions', () => {
+test('transitional agents reserve both endpoint tiles', () => {
   const agents = new AgentBeliefs(3000);
   agents.update([agent('a', 2, 3), agent('b', 4.6, 1.4)], 0);
-  assert.deepEqual([...agents.occupied(0)].sort(), ['2,3', '5,1']);
-  assert.deepEqual(agents.get('b'), { id: 'b', name: 'b', x: 5, y: 1, seenAt: 0 });
+  assert.deepEqual([...agents.occupied(0)].sort(), ['2,3', '4,1', '4,2', '5,1', '5,2']);
+  assert.deepEqual(agents.get('b'), { id: 'b', name: 'b', x: 5, y: 1, rawX: 4.6, rawY: 1.4, seenAt: 0 });
 });
 
 test('only recently seen agents block tiles', () => {

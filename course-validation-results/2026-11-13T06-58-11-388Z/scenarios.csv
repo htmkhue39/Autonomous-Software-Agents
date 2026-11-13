@@ -1,0 +1,2 @@
+scenario,passed,elapsedMs,checksPassed,checksTotal,failedChecks,bdiIntentions,pddlCalls,pddlSuccess,bdiDeliveries,llmDeliveries,llmModelCalls,llmToolResults,coordinationMessages,beliefMerges,llmEvacuations,objectiveStarts,objectiveQuarantines
+bdi_pddl,true,10550,11,11,,1,2,1,0,0,0,0,0,0,0,0,0

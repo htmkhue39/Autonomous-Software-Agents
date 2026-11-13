@@ -31,8 +31,10 @@ export function decayIntervalMs(event, clockMs) {
  * then, and who carries it. Values are estimated from the time since then.
  */
 export class ParcelBeliefs {
-  /** @type {Map<string, { parcel: Parcel, seenAt: number }>} */
+  /** @type {Map<string, { parcel: Parcel, seenAt: number, source?: 'direct'|'peer' }>} */
   #known = new Map();
+  /** @type {Map<TileKey, number>} The newest authoritative observation for each tile. */
+  #observedTiles = new Map();
 
   /** @param {number} decayMs  one point lost per this many milliseconds */
   constructor(decayMs) {
@@ -51,14 +53,79 @@ export class ParcelBeliefs {
    */
   update(parcels, inView, now, selfId) {
     const seen = new Set(parcels.map(p => p.id));
+    for (const t of inView) this.#observedTiles.set(key(t.x, t.y), now);
     /** @type {Set<TileKey>} */
     const viewed = new Set(inView.map(({ x, y }) => key(x, y)));
     for (const [id, { parcel }] of this.#known) {
       if (seen.has(id) || (selfId !== undefined && parcel.carriedBy === selfId)) continue;
       if (viewed.has(key(Math.round(parcel.x), Math.round(parcel.y)))) this.#known.delete(id);
     }
-    for (const parcel of parcels) this.#known.set(parcel.id, { parcel: { ...parcel }, seenAt: now });
+    for (const parcel of parcels) this.#known.set(parcel.id, { parcel: { ...parcel }, seenAt: now, source: 'direct' });
   }
+
+  /** Merge teammate reports only if they do not contradict a newer direct
+   * observation. The caller converts sender age to our local game clock.
+   * @param {Parcel[]} parcels @param {number} observedAt @param {number} now
+   * @returns {number} inserted or refreshed reports
+   */
+  mergeShared(parcels, observedAt, now) {
+    let count = 0;
+    if (!Number.isFinite(observedAt) || now - observedAt > 15000 || observedAt > now + 500) return count;
+    for (const parcel of parcels) {
+      if (!parcel || !Number.isInteger(parcel.x) || !Number.isInteger(parcel.y) || parcel.reward <= 0 || parcel.carriedBy) continue;
+      if ((this.#observedTiles.get(key(parcel.x, parcel.y)) ?? -Infinity) >= observedAt) continue;
+      const current = this.#known.get(parcel.id);
+      if (current && current.seenAt >= observedAt) continue;
+      this.#known.set(parcel.id, { parcel: { ...parcel, carriedBy: null }, seenAt: observedAt, source: 'peer' });
+      count++;
+    }
+    return count;
+  }
+
+  /** Only directly observed free parcels are relayed; no echo chains. */
+  /** @param {number} now @returns {Parcel[]} */
+  directFree(now) {
+    /** @type {Parcel[]} */ const parcels = [];
+    for (const [id, entry] of this.#known) {
+      if (entry.source === 'peer') continue;
+      const parcel = this.get(id, now);
+      if (parcel && !parcel.carriedBy) parcels.push(parcel);
+    }
+    return parcels;
+  }
+
+  /** Reports retain the ORIGINAL observation reward and age, never rebrand
+   * old information as a fresh sighting when a heartbeat repeats it.
+   * @param {number} now @param {number} [maxAgeMs]
+   */
+  directReports(now, maxAgeMs = 5000) {
+    /** @type {{id:string,x:number,y:number,reward:number,ageMs:number}[]} */ const reports = [];
+    for (const [id, entry] of this.#known) {
+      const ageMs = Math.max(0, Math.floor(now - entry.seenAt));
+      if (entry.source === 'peer' || ageMs > maxAgeMs) continue;
+      const parcel = this.get(id, now);
+      if (!parcel || parcel.carriedBy) continue;
+      reports.push({ id, x: parcel.x, y: parcel.y, reward: entry.parcel.reward, ageMs });
+    }
+    return reports;
+  }
+
+  /** Provenance for one currently known parcel, without turning old peer
+   * reports into authoritative fresh observations. Used only to assess how
+   * safely a time-sensitive tool can act; never treated as proof of presence.
+   * @param {string} id @param {number} now
+   * @returns {{source:'direct'|'peer',ageMs:number}|null}
+   */
+  freshness(id, now) {
+    const entry = this.#known.get(id);
+    if (!entry) return null;
+    return { source: entry.source === 'peer' ? 'peer' : 'direct',
+      ageMs: Math.max(0, now - entry.seenAt) };
+  }
+
+  /** Forget a parcel confirmed collected or invalidated by a teammate. */
+  /** @param {string} id */
+  forget(id) { return this.#known.delete(id); }
 
   /**
    * These parcels were just picked up by `agentId`. Parcels never seen are

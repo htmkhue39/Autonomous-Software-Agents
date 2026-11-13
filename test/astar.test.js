@@ -39,10 +39,10 @@ test('blocked tiles are avoided', () => {
   assert.deepEqual(findPath(map, { x: 0, y: 0 }, { x: 2, y: 0 }, { now: 1000 }), ['right', 'right']);
 });
 
-test('arrow tiles do not restrict the route', () => {
-  const map = mapFromRows(['3→←3']);
+test('arrow tiles allow only routes in their direction', () => {
+  const map = mapFromRows(['3→33']);
   assert.deepEqual(findPath(map, { x: 0, y: 0 }, { x: 3, y: 0 }, NOW), ['right', 'right', 'right']);
-  assert.deepEqual(findPath(map, { x: 3, y: 0 }, { x: 0, y: 0 }, NOW), ['left', 'left', 'left']);
+  assert.equal(findPath(map, { x: 3, y: 0 }, { x: 0, y: 0 }, NOW), null);
 });
 
 test('tiles occupied by other agents are avoided', () => {

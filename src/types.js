@@ -144,16 +144,21 @@
  * @property {string} name
  * @property {'astar' | 'pddl'} mover
  * @property {number} replaceMargin    a new option must beat the current one by this factor
+ * @property {number} minCommitMs     minimum commitment before soft switching
+ * @property {number} failedGoalCooldownMs  delay before retrying failed goals
  * @property {number} blockedTtlMs     how long a refused move is first avoided; doubles on each repeat
  * @property {number} maxBlockedMs     the longest a refused move is ever avoided
  * @property {number} agentTtlMs       how long a sighted agent counts as an obstacle
  * @property {number} maxMoveRetries
+ * @property {number} [congestionTimeoutMs]
+ * @property {number} [congestionRetryMs]
  * @property {number} pddlTimeoutMs
+ * @property {number} actionTimeoutMs
  */
 
 /**
- * The connection to the game (src/client.js). Actions never reject: a
- * failed move is `false`, a failed pickup or putdown is `[]`.
+ * The connection to the game (src/client.js). A server refusal returns
+ * false/empty arrays; transport exceptions reject and imply unknown outcome.
  * @typedef {Object} Client
  * @property {any} socket  the SDK socket, for anything not wrapped here (messages, token event)
  * @property {(dir: Direction) => Promise<Position | false>} move
@@ -165,6 +170,10 @@
  * @property {(callback: (sensing: Sensing) => void) => void} onSensing
  * @property {(callback: (me: AgentState) => void) => void} onYou
  * @property {(callback: (frame: number) => void) => void} onPing  the server's frame, about once a second
+ * @property {(message: string) => Promise<unknown>} shout
+ * @property {(toId: string, message: string) => Promise<unknown>} say
+ * @property {(toId: string, message: string) => Promise<unknown>} ask
+ * @property {(callback: (id:string,name:string,message:unknown,reply?:((message:unknown)=>void))=>void) => (()=>void)} onMessage
  */
 
 /**
@@ -184,7 +193,7 @@
 
 /**
  * Set to stopped when the running intention is replaced.
- * @typedef {{ stopped: boolean }} StopSignal
+ * @typedef {{ stopped: boolean, finishing?: boolean }} StopSignal
  */
 
 /**
@@ -193,6 +202,7 @@
  * @property {number} now                                    milliseconds
  * @property {Set<TileKey>} [occupied]                       tiles held by other agents
  * @property {(x: number, y: number) => boolean} [forbidden] tiles ruled out by directives
+ * @property {boolean} [ignoreTemporary] diagnostics only; ignore transient blocks/refusals (NEVER for execution)
  */
 
 /**

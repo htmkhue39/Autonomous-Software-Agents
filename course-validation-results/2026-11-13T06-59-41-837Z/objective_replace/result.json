@@ -1,0 +1,150 @@
+{
+  "scenario": "objective_replace",
+  "passed": true,
+  "checks": [
+    {
+      "id": "server_shutdown_clean",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_early_agent_exit",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_early_server_exit",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_setup_error",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "not_interrupted",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "window_completed",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "llm_ready",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "channel_ready",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "first_goal_sent",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "second_goal_sent",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "first_tool_observed_before_replacement",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "first_goal_started",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "replacement_queued",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "safe_replacement_requested",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "second_goal_started",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "first_goal_settled",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "second_goal_verified",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "confirmed_second_delivery",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "no_quarantine",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_uncertain_action",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    }
+  ],
+  "observed": {
+    "bdiIntentions": 11,
+    "pddlCalls": 0,
+    "pddlSuccess": 0,
+    "bdiDeliveries": 2,
+    "llmDeliveries": 2,
+    "llmModelCalls": 5,
+    "llmToolResults": 2,
+    "coordinationMessages": 70,
+    "beliefMerges": 8,
+    "llmEvacuations": 2,
+    "objectiveStarts": 2,
+    "objectiveQuarantines": 0
+  },
+  "limitations": [
+    "Local Deliveroo.js game only; not official course Challenge 1/2 evaluation.",
+    "Scores and deliveries are agent-observed, not official Tournament outcomes.",
+    "Objective update uses a local stdin NDJSON fixture, not an official instructor channel."
+  ],
+  "elapsedMs": 35587,
+  "startedAt": "2026-11-13T07:01:10.196Z",
+  "endedAt": "2026-11-13T07:01:45.783Z",
+  "observationLimitMs": 180000,
+  "setupError": null
+}

@@ -1,0 +1,125 @@
+{
+  "scenario": "cooperation",
+  "passed": true,
+  "checks": [
+    {
+      "id": "server_shutdown_clean",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_early_agent_exit",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_early_server_exit",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_setup_error",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "not_interrupted",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "window_completed",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "bdi_ready",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "llm_ready",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "independent_bdi_intention",
+      "passed": true,
+      "observed": 9,
+      "required": ">=1"
+    },
+    {
+      "id": "llm_model_called",
+      "passed": true,
+      "observed": 4,
+      "required": ">=1"
+    },
+    {
+      "id": "bidirectional_sent",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "bidirectional_received",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "belief_merge_observed",
+      "passed": true,
+      "observed": 5,
+      "required": ">=1"
+    },
+    {
+      "id": "llm_real_delivery",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "delivery_tile_evacuated",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "evacuation_enabled",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    }
+  ],
+  "observed": {
+    "bdiIntentions": 9,
+    "pddlCalls": 0,
+    "pddlSuccess": 0,
+    "bdiDeliveries": 2,
+    "llmDeliveries": 1,
+    "llmModelCalls": 4,
+    "llmToolResults": 3,
+    "coordinationMessages": 50,
+    "beliefMerges": 5,
+    "llmEvacuations": 1,
+    "objectiveStarts": 0,
+    "objectiveQuarantines": 0
+  },
+  "limitations": [
+    "Local Deliveroo.js game only; not official course Challenge 1/2 evaluation.",
+    "Scores and deliveries are agent-observed, not official Tournament outcomes."
+  ],
+  "elapsedMs": 24743,
+  "startedAt": "2026-11-13T07:00:43.702Z",
+  "endedAt": "2026-11-13T07:01:08.445Z",
+  "observationLimitMs": 180000,
+  "setupError": null
+}

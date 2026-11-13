@@ -1,0 +1,95 @@
+{
+  "scenario": "bdi_pddl",
+  "passed": true,
+  "checks": [
+    {
+      "id": "server_shutdown_clean",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_early_agent_exit",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_early_server_exit",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "no_setup_error",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "not_interrupted",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "window_completed",
+      "passed": true,
+      "observed": true,
+      "required": "true"
+    },
+    {
+      "id": "bdi_ready",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "bdi_intention_activated",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "external_pddl_invoked",
+      "passed": true,
+      "observed": 2,
+      "required": ">=1"
+    },
+    {
+      "id": "external_pddl_succeeded",
+      "passed": true,
+      "observed": 1,
+      "required": ">=1"
+    },
+    {
+      "id": "bdi_real_move",
+      "passed": true,
+      "observed": 4,
+      "required": ">=1"
+    }
+  ],
+  "observed": {
+    "bdiIntentions": 1,
+    "pddlCalls": 2,
+    "pddlSuccess": 1,
+    "bdiDeliveries": 0,
+    "llmDeliveries": 0,
+    "llmModelCalls": 0,
+    "llmToolResults": 0,
+    "coordinationMessages": 0,
+    "beliefMerges": 0,
+    "llmEvacuations": 0,
+    "objectiveStarts": 0,
+    "objectiveQuarantines": 0
+  },
+  "limitations": [
+    "Local Deliveroo.js game only; not official course Challenge 1/2 evaluation.",
+    "Scores and deliveries are agent-observed, not official Tournament outcomes."
+  ],
+  "elapsedMs": 10550,
+  "startedAt": "2026-11-13T06:58:11.945Z",
+  "endedAt": "2026-11-13T06:58:22.495Z",
+  "observationLimitMs": 180000,
+  "setupError": null
+}

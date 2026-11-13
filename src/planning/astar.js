@@ -31,7 +31,7 @@ export function findPath(map, from, to, options) {
  * @param {PathOptions} options
  * @returns {{ target: Position, path: Direction[] } | null}
  */
-export function findNearest(map, from, targets, { now, occupied = new Set(), forbidden = () => false }) {
+export function findNearest(map, from, targets, { now, occupied = new Set(), forbidden = () => false, ignoreTemporary = false }) {
   if (targets.some(t => t.x === from.x && t.y === from.y)) return { target: { x: from.x, y: from.y }, path: [] };
 
   /** @param {number} x @param {number} y */
@@ -57,7 +57,7 @@ export function findNearest(map, from, targets, { now, occupied = new Set(), for
     if (goalKeys.has(current.k)) return { target: { x: current.x, y: current.y }, path: pathTo(cameFrom, current.k) };
 
     const g = /** @type {number} */ (cost.get(current.k)) + 1;
-    for (const { x, y, dir } of map.neighbors(current.x, current.y, now)) {
+    for (const { x, y, dir } of map.neighbors(current.x, current.y, now, { ignoreTemporary })) {
       const k = key(x, y);
       if (!enterable(x, y) || g >= (cost.get(k) ?? Infinity)) continue;
       cost.set(k, g);

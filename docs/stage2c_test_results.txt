@@ -1,0 +1,986 @@
+
+> autonomous-software-agents@1.0.0 test
+> node --test
+
+TAP version 13
+# Subtest: an unresolved SDK action times out but keeps its single-flight lock
+ok 1 - an unresolved SDK action times out but keeps its single-flight lock
+  ---
+  duration_ms: 11.10563
+  type: 'test'
+  ...
+# Subtest: SDK transport rejection is not treated as a refused move
+ok 2 - SDK transport rejection is not treated as a refused move
+  ---
+  duration_ms: 0.369345
+  type: 'test'
+  ...
+# Subtest: transitional agents reserve both endpoint tiles
+ok 3 - transitional agents reserve both endpoint tiles
+  ---
+  duration_ms: 2.453375
+  type: 'test'
+  ...
+# Subtest: only recently seen agents block tiles
+ok 4 - only recently seen agents block tiles
+  ---
+  duration_ms: 0.456914
+  type: 'test'
+  ...
+# Subtest: an agent seen again moves to its new tile
+ok 5 - an agent seen again moves to its new tile
+  ---
+  duration_ms: 0.289564
+  type: 'test'
+  ...
+# Subtest: the route is empty when already at the target
+ok 6 - the route is empty when already at the target
+  ---
+  duration_ms: 3.30435
+  type: 'test'
+  ...
+# Subtest: a straight line is the obvious route
+ok 7 - a straight line is the obvious route
+  ---
+  duration_ms: 0.786266
+  type: 'test'
+  ...
+# Subtest: the route takes a shortest detour around a wall
+ok 8 - the route takes a shortest detour around a wall
+  ---
+  duration_ms: 0.853642
+  type: 'test'
+  ...
+# Subtest: there is no route to an unreachable tile
+ok 9 - there is no route to an unreachable tile
+  ---
+  duration_ms: 0.335712
+  type: 'test'
+  ...
+# Subtest: blocked tiles are avoided
+ok 10 - blocked tiles are avoided
+  ---
+  duration_ms: 0.930131
+  type: 'test'
+  ...
+# Subtest: arrow tiles allow only routes in their direction
+ok 11 - arrow tiles allow only routes in their direction
+  ---
+  duration_ms: 0.306634
+  type: 'test'
+  ...
+# Subtest: tiles occupied by other agents are avoided
+ok 12 - tiles occupied by other agents are avoided
+  ---
+  duration_ms: 0.455984
+  type: 'test'
+  ...
+# Subtest: an occupied target cannot be reached
+ok 13 - an occupied target cannot be reached
+  ---
+  duration_ms: 1.379088
+  type: 'test'
+  ...
+# Subtest: forbidden tiles are avoided, including as the target
+ok 14 - forbidden tiles are avoided, including as the target
+  ---
+  duration_ms: 0.570398
+  type: 'test'
+  ...
+# Subtest: the closest reachable target is picked
+ok 15 - the closest reachable target is picked
+  ---
+  duration_ms: 0.592957
+  type: 'test'
+  ...
+# Subtest: the closest target is measured by route, not straight-line distance
+ok 16 - the closest target is measured by route, not straight-line distance
+  ---
+  duration_ms: 0.400125
+  type: 'test'
+  ...
+# Subtest: unreachable targets are skipped
+ok 17 - unreachable targets are skipped
+  ---
+  duration_ms: 0.177041
+  type: 'test'
+  ...
+# Subtest: nothing is returned when no target can be reached
+ok 18 - nothing is returned when no target can be reached
+  ---
+  duration_ms: 0.19644
+  type: 'test'
+  ...
+# Subtest: a tile behind a refused move is reached from another side
+ok 19 - a tile behind a refused move is reached from another side
+  ---
+  duration_ms: 0.320102
+  type: 'test'
+  ...
+# Subtest: the map size is taken from the tiles, not the map message
+ok 20 - the map size is taken from the tiles, not the map message
+  ---
+  duration_ms: 2.159053
+  type: 'test'
+  ...
+# Subtest: the agent's own position is rounded
+ok 21 - the agent's own position is rounded
+  ---
+  duration_ms: 1.170984
+  type: 'test'
+  ...
+# Subtest: the agent itself is not counted as another agent
+ok 22 - the agent itself is not counted as another agent
+  ---
+  duration_ms: 1.054063
+  type: 'test'
+  ...
+# Subtest: tiles in view are marked as seen now
+ok 23 - tiles in view are marked as seen now
+  ---
+  duration_ms: 0.389002
+  type: 'test'
+  ...
+# Subtest: parcels are fed from sensing and decay with the server setting
+ok 24 - parcels are fed from sensing and decay with the server setting
+  ---
+  duration_ms: 0.797863
+  type: 'test'
+  ...
+# Subtest: times in the beliefs follow the game clock, not the local clock
+ok 25 - times in the beliefs follow the game clock, not the local clock
+  ---
+  duration_ms: 0.359209
+  type: 'test'
+  ...
+# Subtest: the agent learns what it carries from its own pickup and putdown
+ok 26 - the agent learns what it carries from its own pickup and putdown
+  ---
+  duration_ms: 0.92365
+  type: 'test'
+  ...
+# Subtest: a parcel put down off a delivery tile is left there, free
+ok 27 - a parcel put down off a delivery tile is left there, free
+  ---
+  duration_ms: 0.538224
+  type: 'test'
+  ...
+# Subtest: a tile holding a crate is blocked for a short time
+ok 28 - a tile holding a crate is blocked for a short time
+  ---
+  duration_ms: 2.067439
+  type: 'test'
+  ...
+# Subtest: a tile event changes the map
+ok 29 - a tile event changes the map
+  ---
+  duration_ms: 1.044229
+  type: 'test'
+  ...
+# Subtest: beliefs become ready only when config, map and self have all arrived
+ok 30 - beliefs become ready only when config, map and self have all arrived
+  ---
+  duration_ms: 0.860465
+  type: 'test'
+  ...
+# Subtest: every update is announced
+ok 31 - every update is announced
+  ---
+  duration_ms: 0.455796
+  type: 'test'
+  ...
+# Subtest: listen feeds beliefs from the client
+ok 32 - listen feeds beliefs from the client
+  ---
+  duration_ms: 0.441562
+  type: 'test'
+  ...
+# Subtest: game time is the frame times the milliseconds per frame
+ok 33 - game time is the frame times the milliseconds per frame
+  ---
+  duration_ms: 1.368319
+  type: 'test'
+  ...
+# Subtest: game time moves on with the local clock between frames
+ok 34 - game time moves on with the local clock between frames
+  ---
+  duration_ms: 0.237802
+  type: 'test'
+  ...
+# Subtest: each new frame corrects the game time, even backwards
+ok 35 - each new frame corrects the game time, even backwards
+  ---
+  duration_ms: 0.178783
+  type: 'test'
+  ...
+# Subtest: before any frame the local clock is used
+ok 36 - before any frame the local clock is used
+  ---
+  duration_ms: 2.751065
+  type: 'test'
+  ...
+# Subtest: protocol accepts validated messages and rejects spam, malformed, stale or future packets
+ok 37 - protocol accepts validated messages and rejects spam, malformed, stale or future packets
+  ---
+  duration_ms: 2.248452
+  type: 'test'
+  ...
+# Subtest: SDK broadcast discovers teammate, shares direct beliefs and exposes intention
+ok 38 - SDK broadcast discovers teammate, shares direct beliefs and exposes intention
+  ---
+  duration_ms: 5.221957
+  type: 'test'
+  ...
+# Subtest: newer local empty sighting takes precedence over teammate belief
+ok 39 - newer local empty sighting takes precedence over teammate belief
+  ---
+  duration_ms: 1.601652
+  type: 'test'
+  ...
+# Subtest: simultaneous parcel claims resolve by reachable path cost and loser yields
+ok 40 - simultaneous parcel claims resolve by reachable path cost and loser yields
+  ---
+  duration_ms: 12.992457
+  type: 'test'
+  ...
+# Subtest: incumbent claim survives a later equal-distance competitor
+ok 41 - incumbent claim survives a later equal-distance competitor
+  ---
+  duration_ms: 11.585673
+  type: 'test'
+  ...
+# Subtest: simultaneous equal-cost claims use deterministic lexical tie-breaker
+ok 42 - simultaneous equal-cost claims use deterministic lexical tie-breaker
+  ---
+  duration_ms: 11.24844
+  type: 'test'
+  ...
+# Subtest: peer claims expire after lease and do not block decisions when peer is gone
+ok 43 - peer claims expire after lease and do not block decisions when peer is gone
+  ---
+  duration_ms: 11.502713
+  type: 'test'
+  ...
+# Subtest: unknown name, replayed sequence and malformed payload never change peer claim state
+ok 44 - unknown name, replayed sequence and malformed payload never change peer claim state
+  ---
+  duration_ms: 0.472423
+  type: 'test'
+  ...
+# Subtest: BDI option generation and LLM tool adapter both respect teammate claims
+ok 45 - BDI option generation and LLM tool adapter both respect teammate claims
+  ---
+  duration_ms: 13.469639
+  type: 'test'
+  ...
+# Subtest: cooperative LLM collection enforces a claim, records intent and releases on successful pickup
+ok 46 - cooperative LLM collection enforces a claim, records intent and releases on successful pickup
+  ---
+  duration_ms: 13.990565
+  type: 'test'
+  ...
+# Subtest: live BDI controller suppresses a pickup claimed by closer teammate
+ok 47 - live BDI controller suppresses a pickup claimed by closer teammate
+  ---
+  duration_ms: 51.301087
+  type: 'test'
+  ...
+# Subtest: repeated old parcel reports do not overwrite newer empty observations
+ok 48 - repeated old parcel reports do not overwrite newer empty observations
+  ---
+  duration_ms: 0.590155
+  type: 'test'
+  ...
+# Subtest: test/helpers.js
+ok 7 - test/helpers.js
+  ---
+  duration_ms: 75.873606
+  type: 'test'
+  ...
+# Subtest: intention revision respects threshold, invalidation, and exploration yield
+ok 50 - intention revision respects threshold, invalidation, and exploration yield
+  ---
+  duration_ms: 0.806018
+  type: 'test'
+  ...
+# Subtest: BDI control loop activates goals autonomously and completes pickup/delivery
+ok 51 - BDI control loop activates goals autonomously and completes pickup/delivery
+  ---
+  duration_ms: 15.456718
+  type: 'test'
+  ...
+# Subtest: native tool loop plans, executes an allowlisted tool, updates memory, then verifies completion
+ok 52 - native tool loop plans, executes an allowlisted tool, updates memory, then verifies completion
+  ---
+  duration_ms: 6.362841
+  type: 'test'
+  ...
+# Subtest: unknown native tools are rejected; model can replan using failure feedback
+ok 53 - unknown native tools are rejected; model can replan using failure feedback
+  ---
+  duration_ms: 1.30669
+  type: 'test'
+  ...
+# Subtest: invalid plans do not execute any tools
+ok 54 - invalid plans do not execute any tools
+  ---
+  duration_ms: 0.982771
+  type: 'test'
+  ...
+# Subtest: plain chat answer without a real tool call never counts as completion
+ok 55 - plain chat answer without a real tool call never counts as completion
+  ---
+  duration_ms: 1.411394
+  type: 'test'
+  ...
+# Subtest: premature completed status is rejected until a real tool executes
+ok 56 - premature completed status is rejected until a real tool executes
+  ---
+  duration_ms: 0.934717
+  type: 'test'
+  ...
+# Subtest: model reported completion is not falsely labelled verified without a verifier
+ok 57 - model reported completion is not falsely labelled verified without a verifier
+  ---
+  duration_ms: 0.954757
+  type: 'test'
+  ...
+# Subtest: JSON fallback still validates tool arguments before dispatch
+ok 58 - JSON fallback still validates tool arguments before dispatch
+  ---
+  duration_ms: 1.013842
+  type: 'test'
+  ...
+# Subtest: bounded tool loop terminates when the model continues calling tools
+ok 59 - bounded tool loop terminates when the model continues calling tools
+  ---
+  duration_ms: 0.515831
+  type: 'test'
+  ...
+# Subtest: objective replacement cancels an unfinished model call
+ok 60 - objective replacement cancels an unfinished model call
+  ---
+  duration_ms: 0.81625
+  type: 'test'
+  ...
+# Subtest: failed completion verifier requires re-evaluation
+ok 61 - failed completion verifier requires re-evaluation
+  ---
+  duration_ms: 1.731754
+  type: 'test'
+  ...
+# Subtest: native narrative after a tool failure gets a bounded recovery nudge
+ok 62 - native narrative after a tool failure gets a bounded recovery nudge
+  ---
+  duration_ms: 1.388604
+  type: 'test'
+  ...
+# Subtest: tool failures include diagnostic error message and refreshed observation
+ok 63 - tool failures include diagnostic error message and refreshed observation
+  ---
+  duration_ms: 1.254393
+  type: 'test'
+  ...
+# Subtest: Stage 2B objective grammar supports scored and delivered goals without trusting LLM claims
+ok 64 - Stage 2B objective grammar supports scored and delivered goals without trusting LLM claims
+  ---
+  duration_ms: 3.123207
+  type: 'test'
+  ...
+# Subtest: game observations keep current and partial game state explicit
+ok 65 - game observations keep current and partial game state explicit
+  ---
+  duration_ms: 5.149441
+  type: 'test'
+  ...
+# Subtest: GameProgress completion requires actual score or acknowledged delivery
+ok 66 - GameProgress completion requires actual score or acknowledged delivery
+  ---
+  duration_ms: 1.560997
+  type: 'test'
+  ...
+# Subtest: game tools use allowlisted Stage 1.1 plan interface to collect and deliver real parcel IDs
+ok 67 - game tools use allowlisted Stage 1.1 plan interface to collect and deliver real parcel IDs
+  ---
+  duration_ms: 6.997253
+  type: 'test'
+  ...
+# Subtest: invalid or unknown game requests cannot execute an action
+ok 68 - invalid or unknown game requests cannot execute an action
+  ---
+  duration_ms: 1.487932
+  type: 'test'
+  ...
+# Subtest: game tool detects parcel disappearance and never invokes pickup plan
+ok 69 - game tool detects parcel disappearance and never invokes pickup plan
+  ---
+  duration_ms: 0.822514
+  type: 'test'
+  ...
+# Subtest: unknown action outcome is preserved as outcome_unknown instead of false failure
+ok 70 - unknown action outcome is preserved as outcome_unknown instead of false failure
+  ---
+  duration_ms: 1.460485
+  type: 'test'
+  ...
+# Subtest: capacity and reachable delivery preconditions are validated
+ok 71 - capacity and reachable delivery preconditions are validated
+  ---
+  duration_ms: 1.932584
+  type: 'test'
+  ...
+# Subtest: complete simulated LLM plan picks up and delivers based on evidence
+ok 72 - complete simulated LLM plan picks up and delivers based on evidence
+  ---
+  duration_ms: 8.44375
+  type: 'test'
+  ...
+# Subtest: native finish without delivery evidence is rejected even after read-only tool
+ok 73 - native finish without delivery evidence is rejected even after read-only tool
+  ---
+  duration_ms: 2.864611
+  type: 'test'
+  ...
+# Subtest: ToolFailure metadata is never taken from arbitrary tool exceptions
+ok 74 - ToolFailure metadata is never taken from arbitrary tool exceptions
+  ---
+  duration_ms: 0.379114
+  type: 'test'
+  ...
+# Subtest: Stage 2B runtime executes the genuine Stage 1.1 movement/plan pipeline in a fake world
+ok 75 - Stage 2B runtime executes the genuine Stage 1.1 movement/plan pipeline in a fake world
+  ---
+  duration_ms: 36.825756
+  type: 'test'
+  ...
+# Subtest: Stage 2B rejects unsupported local objectives before dispatching model/game actions
+ok 76 - Stage 2B rejects unsupported local objectives before dispatching model/game actions
+  ---
+  duration_ms: 0.888362
+  type: 'test'
+  ...
+# Subtest: Stage 2B game readiness waits for genuine map/config/self observations
+ok 77 - Stage 2B game readiness waits for genuine map/config/self observations
+  ---
+  duration_ms: 4.800287
+  type: 'test'
+  ...
+# Subtest: collect_and_deliver dispatches pickup and delivery in one LLM tool call
+ok 78 - collect_and_deliver dispatches pickup and delivery in one LLM tool call
+  ---
+  duration_ms: 1.022006
+  type: 'test'
+  ...
+# Subtest: collect_and_deliver does not claim delivery when parcel expires after pickup
+ok 79 - collect_and_deliver does not claim delivery when parcel expires after pickup
+  ---
+  duration_ms: 0.946265
+  type: 'test'
+  ...
+# Subtest: perished parcel followed by prose can recover to a new tool action
+ok 80 - perished parcel followed by prose can recover to a new tool action
+  ---
+  duration_ms: 2.910281
+  type: 'test'
+  ...
+# Subtest: the Stage 1.1 executor can execute collect_and_deliver as one LLM game tool
+ok 81 - the Stage 1.1 executor can execute collect_and_deliver as one LLM game tool
+  ---
+  duration_ms: 3.282983
+  type: 'test'
+  ...
+# Subtest: complete Stage 2A loop works over HTTP against a fake Ollama service
+ok 82 - complete Stage 2A loop works over HTTP against a fake Ollama service
+  ---
+  duration_ms: 73.866695
+  type: 'test'
+  ...
+# Subtest: memory replaces objectives, versions and clears previous tool history
+ok 83 - memory replaces objectives, versions and clears previous tool history
+  ---
+  duration_ms: 1.503743
+  type: 'test'
+  ...
+# Subtest: memory caps event history and discards stale observations from context
+ok 84 - memory caps event history and discards stale observations from context
+  ---
+  duration_ms: 0.835359
+  type: 'test'
+  ...
+# Subtest: memory copies observations and bounds oversized data
+ok 85 - memory copies observations and bounds oversized data
+  ---
+  duration_ms: 1.160727
+  type: 'test'
+  ...
+# Subtest: Ollama provider sends HTTP chat request, schema and tools without streaming
+ok 86 - Ollama provider sends HTTP chat request, schema and tools without streaming
+  ---
+  duration_ms: 1.296357
+  type: 'test'
+  ...
+# Subtest: Ollama provider returns native tool calls and protects against malformed responses
+ok 87 - Ollama provider returns native tool calls and protects against malformed responses
+  ---
+  duration_ms: 2.042361
+  type: 'test'
+  ...
+# Subtest: Ollama provider posts to real local HTTP server using fetch
+ok 88 - Ollama provider posts to real local HTTP server using fetch
+  ---
+  duration_ms: 36.26745
+  type: 'test'
+  ...
+# Subtest: tool registry exposes Ollama function schemas and executes allowed tool
+ok 89 - tool registry exposes Ollama function schemas and executes allowed tool
+  ---
+  duration_ms: 4.843169
+  type: 'test'
+  ...
+# Subtest: invalid, unknown and prototype-related tool names cannot execute
+ok 90 - invalid, unknown and prototype-related tool names cannot execute
+  ---
+  duration_ms: 0.829705
+  type: 'test'
+  ...
+# Subtest: duplicate and unsupported tool schemas are rejected
+ok 91 - duplicate and unsupported tool schemas are rejected
+  ---
+  duration_ms: 1.122605
+  type: 'test'
+  ...
+# Subtest: tool failure returns a recoverable result, and cancellation prevents dispatch
+ok 92 - tool failure returns a recoverable result, and cancellation prevents dispatch
+  ---
+  duration_ms: 0.793997
+  type: 'test'
+  ...
+# Subtest: slow in-flight tool times out with unknown outcome rather than a false refusal
+ok 93 - slow in-flight tool times out with unknown outcome rather than a false refusal
+  ---
+  duration_ms: 9.991038
+  type: 'test'
+  ...
+# Subtest: strict JSON-schema subset validates nested arguments
+ok 94 - strict JSON-schema subset validates nested arguments
+  ---
+  duration_ms: 1.594386
+  type: 'test'
+  ...
+# Subtest: rejects unknown properties, missing keys, and type coercion
+ok 95 - rejects unknown properties, missing keys, and type coercion
+  ---
+  duration_ms: 0.710051
+  type: 'test'
+  ...
+# Subtest: rejects invalid bounds and unsupported schema keywords at registration
+ok 96 - rejects invalid bounds and unsupported schema keywords at registration
+  ---
+  duration_ms: 1.087782
+  type: 'test'
+  ...
+# Subtest: key joins coordinates
+ok 97 - key joins coordinates
+  ---
+  duration_ms: 4.300091
+  type: 'test'
+  ...
+# Subtest: walls and off-map are not walkable, every other tile is
+ok 98 - walls and off-map are not walkable, every other tile is
+  ---
+  duration_ms: 0.539805
+  type: 'test'
+  ...
+# Subtest: a blocked tile is unwalkable until the block expires
+ok 99 - a blocked tile is unwalkable until the block expires
+  ---
+  duration_ms: 0.403837
+  type: 'test'
+  ...
+# Subtest: neighbors returns walkable adjacent tiles with directions
+ok 100 - neighbors returns walkable adjacent tiles with directions
+  ---
+  duration_ms: 1.396682
+  type: 'test'
+  ...
+# Subtest: arrow tiles restrict traversal to their indicated direction
+ok 101 - arrow tiles restrict traversal to their indicated direction
+  ---
+  duration_ms: 0.461127
+  type: 'test'
+  ...
+# Subtest: delivery and spawn tiles are listed
+ok 102 - delivery and spawn tiles are listed
+  ---
+  duration_ms: 0.311631
+  type: 'test'
+  ...
+# Subtest: updateTile changes a tile type
+ok 103 - updateTile changes a tile type
+  ---
+  duration_ms: 0.234687
+  type: 'test'
+  ...
+# Subtest: remembers when each tile was last seen
+ok 104 - remembers when each tile was last seen
+  ---
+  duration_ms: 0.160759
+  type: 'test'
+  ...
+# Subtest: a refused move blocks only that move, not the tile
+ok 105 - a refused move blocks only that move, not the tile
+  ---
+  duration_ms: 0.613331
+  type: 'test'
+  ...
+# Subtest: a move refused again stays blocked twice as long, up to a limit
+ok 106 - a move refused again stays blocked twice as long, up to a limit
+  ---
+  duration_ms: 0.451178
+  type: 'test'
+  ...
+# Subtest: a move that succeeds is trusted again
+ok 107 - a move that succeeds is trusted again
+  ---
+  duration_ms: 0.211811
+  type: 'test'
+  ...
+# Subtest: nothing is offered before the beliefs are ready
+ok 108 - nothing is offered before the beliefs are ready
+  ---
+  duration_ms: 1.790421
+  type: 'test'
+  ...
+# Subtest: a pickup is scored for the walk to the parcel and on to delivery
+ok 109 - a pickup is scored for the walk to the parcel and on to delivery
+  ---
+  duration_ms: 7.671159
+  type: 'test'
+  ...
+# Subtest: the more rewarding parcel ranks first even when it is further away
+ok 110 - the more rewarding parcel ranks first even when it is further away
+  ---
+  duration_ms: 0.803821
+  type: 'test'
+  ...
+# Subtest: a pickup counts the decay of the parcels already carried
+ok 111 - a pickup counts the decay of the parcels already carried
+  ---
+  duration_ms: 0.984688
+  type: 'test'
+  ...
+# Subtest: deliver is offered only while carrying, to the nearest delivery tile
+ok 112 - deliver is offered only while carrying, to the nearest delivery tile
+  ---
+  duration_ms: 1.046769
+  type: 'test'
+  ...
+# Subtest: no pickup is offered at full capacity
+ok 113 - no pickup is offered at full capacity
+  ---
+  duration_ms: 0.355283
+  type: 'test'
+  ...
+# Subtest: explore heads for the spawn tile seen longest ago, worth nothing
+ok 114 - explore heads for the spawn tile seen longest ago, worth nothing
+  ---
+  duration_ms: 1.438836
+  type: 'test'
+  ...
+# Subtest: options worth something come before exploring
+ok 115 - options worth something come before exploring
+  ---
+  duration_ms: 0.279922
+  type: 'test'
+  ...
+# Subtest: parcels that would be worthless on delivery are left out
+ok 116 - parcels that would be worthless on delivery are left out
+  ---
+  duration_ms: 1.96302
+  type: 'test'
+  ...
+# Subtest: nothing is offered for parcels and tiles that cannot be reached
+ok 117 - nothing is offered for parcels and tiles that cannot be reached
+  ---
+  duration_ms: 1.107038
+  type: 'test'
+  ...
+# Subtest: unlimited capacity still permits pickup
+ok 118 - unlimited capacity still permits pickup
+  ---
+  duration_ms: 0.624166
+  type: 'test'
+  ...
+# Subtest: decay settings become milliseconds
+ok 119 - decay settings become milliseconds
+  ---
+  duration_ms: 1.186261
+  type: 'test'
+  ...
+# Subtest: an infinite decay setting means no decay
+ok 120 - an infinite decay setting means no decay
+  ---
+  duration_ms: 0.327234
+  type: 'test'
+  ...
+# Subtest: a decay of one frame needs the server's frame time
+ok 121 - a decay of one frame needs the server's frame time
+  ---
+  duration_ms: 0.475059
+  type: 'test'
+  ...
+# Subtest: an unknown decay setting is an error
+ok 122 - an unknown decay setting is an error
+  ---
+  duration_ms: 0.538358
+  type: 'test'
+  ...
+# Subtest: a parcel loses one point per interval since it was last seen
+ok 123 - a parcel loses one point per interval since it was last seen
+  ---
+  duration_ms: 0.828615
+  type: 'test'
+  ...
+# Subtest: a parcel whose value reaches zero is forgotten
+ok 124 - a parcel whose value reaches zero is forgotten
+  ---
+  duration_ms: 0.136245
+  type: 'test'
+  ...
+# Subtest: free parcels leave out carried and worthless ones
+ok 125 - free parcels leave out carried and worthless ones
+  ---
+  duration_ms: 0.42011
+  type: 'test'
+  ...
+# Subtest: a parcel is forgotten when its tile is seen empty
+ok 126 - a parcel is forgotten when its tile is seen empty
+  ---
+  duration_ms: 0.185669
+  type: 'test'
+  ...
+# Subtest: a parcel another agent carries is forgotten once its last tile is seen without it
+ok 127 - a parcel another agent carries is forgotten once its last tile is seen without it
+  ---
+  duration_ms: 0.428763
+  type: 'test'
+  ...
+# Subtest: a parcel carried mid-move is checked against its rounded tile
+ok 128 - a parcel carried mid-move is checked against its rounded tile
+  ---
+  duration_ms: 0.386931
+  type: 'test'
+  ...
+# Subtest: a parcel the agent carries itself is kept when sensing leaves it out
+ok 129 - a parcel the agent carries itself is kept when sensing leaves it out
+  ---
+  duration_ms: 0.17531
+  type: 'test'
+  ...
+# Subtest: a picked-up parcel counts as carried before sensing reports it
+ok 130 - a picked-up parcel counts as carried before sensing reports it
+  ---
+  duration_ms: 0.677217
+  type: 'test'
+  ...
+# Subtest: parcels put down are no longer carried, and delivered ones are forgotten
+ok 131 - parcels put down are no longer carried, and delivered ones are forgotten
+  ---
+  duration_ms: 0.182982
+  type: 'test'
+  ...
+# Subtest: a parcel seen again is updated
+ok 132 - a parcel seen again is updated
+  ---
+  duration_ms: 0.151833
+  type: 'test'
+  ...
+# Subtest: the parcels carried by an agent are listed
+ok 133 - the parcels carried by an agent are listed
+  ---
+  duration_ms: 0.244403
+  type: 'test'
+  ...
+# Subtest: PDDL includes valid domain, current location, goal and adjacency
+ok 134 - PDDL includes valid domain, current location, goal and adjacency
+  ---
+  duration_ms: 1.322903
+  type: 'test'
+  ...
+# Subtest: decode rejects invalid edge, action, or goal
+ok 135 - decode rejects invalid edge, action, or goal
+  ---
+  duration_ms: 1.279482
+  type: 'test'
+  ...
+# Subtest: external solver called and returned plan executed as a validated route
+ok 136 - external solver called and returned plan executed as a validated route
+  ---
+  duration_ms: 0.652272
+  type: 'test'
+  ...
+# Subtest: external solver timeout is reported and cannot masquerade as success
+ok 137 - external solver timeout is reported and cannot masquerade as success
+  ---
+  duration_ms: 7.965926
+  type: 'test'
+  ...
+# Subtest: predefined pickup and delivery plans execute and revise beliefs
+ok 138 - predefined pickup and delivery plans execute and revise beliefs
+  ---
+  duration_ms: 6.891243
+  type: 'test'
+  ...
+# Subtest: plan is rejected when parcel is gone
+ok 139 - plan is rejected when parcel is gone
+  ---
+  duration_ms: 0.425107
+  type: 'test'
+  ...
+# Subtest: movement checks stop signal between steps
+ok 140 - movement checks stop signal between steps
+  ---
+  duration_ms: 1.399676
+  type: 'test'
+  ...
+# Subtest: refused move marks a failed edge and avoids unsafe rapid retry
+ok 141 - refused move marks a failed edge and avoids unsafe rapid retry
+  ---
+  duration_ms: 80.886245
+  type: 'test'
+  ...
+# Subtest: PDDL mode calls external planner; fallback is explicit
+ok 142 - PDDL mode calls external planner; fallback is explicit
+  ---
+  duration_ms: 2.265638
+  type: 'test'
+  ...
+# Subtest: PDDL-backed plan executes external solver moves without fallback
+ok 143 - PDDL-backed plan executes external solver moves without fallback
+  ---
+  duration_ms: 1.140978
+  type: 'test'
+  ...
+# Subtest: ambiguous move result is not retried by movement runner
+ok 144 - ambiguous move result is not retried by movement runner
+  ---
+  duration_ms: 0.402266
+  type: 'test'
+  ...
+# Subtest: test/stage1-helpers.js
+ok 21 - test/stage1-helpers.js
+  ---
+  duration_ms: 52.383516
+  type: 'test'
+  ...
+# Subtest: pickup ACK missing target is confirmed by subsequent carried-by-self sensing
+ok 146 - pickup ACK missing target is confirmed by subsequent carried-by-self sensing
+  ---
+  duration_ms: 8.671538
+  type: 'test'
+  ...
+# Subtest: missing pickup ACK without positive evidence remains a failure
+ok 147 - missing pickup ACK without positive evidence remains a failure
+  ---
+  duration_ms: 13.958495
+  type: 'test'
+  ...
+# Subtest: other parcels acknowledged by pickup are preserved even if target was missed
+ok 148 - other parcels acknowledged by pickup are preserved even if target was missed
+  ---
+  duration_ms: 19.334543
+  type: 'test'
+  ...
+# Subtest: delivery intention does not switch for a newly seen high-value pickup
+ok 149 - delivery intention does not switch for a newly seen high-value pickup
+  ---
+  duration_ms: 5.955901
+  type: 'test'
+  ...
+# Subtest: exploration remains committed when another spawn tile becomes older
+ok 150 - exploration remains committed when another spawn tile becomes older
+  ---
+  duration_ms: 3.583575
+  type: 'test'
+  ...
+# Subtest: new high-value pickup cannot cause a soft switch before commitment interval
+ok 151 - new high-value pickup cannot cause a soft switch before commitment interval
+  ---
+  duration_ms: 2.528354
+  type: 'test'
+  ...
+# Subtest: failed intention is put on cooldown so another goal is selected
+ok 152 - failed intention is put on cooldown so another goal is selected
+  ---
+  duration_ms: 4.647352
+  type: 'test'
+  ...
+# Subtest: hard invalidation cancels a disappeared pickup immediately
+ok 153 - hard invalidation cancels a disappeared pickup immediately
+  ---
+  duration_ms: 2.222009
+  type: 'test'
+  ...
+# Subtest: navigation failure includes attempted edge and target for diagnostics
+ok 154 - navigation failure includes attempted edge and target for diagnostics
+  ---
+  duration_ms: 87.180735
+  type: 'test'
+  ...
+# Subtest: cancelled navigation records completed work for PDDL efficiency analysis
+ok 155 - cancelled navigation records completed work for PDDL efficiency analysis
+  ---
+  duration_ms: 3.009286
+  type: 'test'
+  ...
+# Subtest: exploration yields immediately to a worthwhile pickup even during commitment period
+ok 156 - exploration yields immediately to a worthwhile pickup even during commitment period
+  ---
+  duration_ms: 3.617473
+  type: 'test'
+  ...
+# Subtest: a final SDK action is not interrupted by a sensing update
+ok 157 - a final SDK action is not interrupted by a sensing update
+  ---
+  duration_ms: 2.924061
+  type: 'test'
+  ...
+# Subtest: every parcel loses value for the whole trip
+ok 158 - every parcel loses value for the whole trip
+  ---
+  duration_ms: 0.874606
+  type: 'test'
+  ...
+# Subtest: only whole decay intervals count
+ok 159 - only whole decay intervals count
+  ---
+  duration_ms: 0.160567
+  type: 'test'
+  ...
+# Subtest: a parcel never counts below zero
+ok 160 - a parcel never counts below zero
+  ---
+  duration_ms: 0.104593
+  type: 'test'
+  ...
+# Subtest: nothing is lost when parcels do not decay
+ok 161 - nothing is lost when parcels do not decay
+  ---
+  duration_ms: 0.173251
+  type: 'test'
+  ...
+# Subtest: a trip with no parcels is worth nothing
+ok 162 - a trip with no parcels is worth nothing
+  ---
+  duration_ms: 0.122429
+  type: 'test'
+  ...
+1..162
+# tests 162
+# suites 0
+# pass 162
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1848.986059

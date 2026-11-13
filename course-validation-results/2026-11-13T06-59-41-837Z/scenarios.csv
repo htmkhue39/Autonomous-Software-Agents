@@ -1,0 +1,5 @@
+scenario,passed,elapsedMs,checksPassed,checksTotal,failedChecks,bdiIntentions,pddlCalls,pddlSuccess,bdiDeliveries,llmDeliveries,llmModelCalls,llmToolResults,coordinationMessages,beliefMerges,llmEvacuations,objectiveStarts,objectiveQuarantines
+bdi_pddl,true,4217,11,11,,1,1,1,0,0,0,0,0,0,0,0,0
+llm_objective,true,53683,13,13,,0,0,0,0,1,8,5,0,0,0,0,0
+cooperation,true,24743,16,16,,9,0,0,2,1,4,3,50,5,1,0,0
+objective_replace,true,35587,20,20,,11,0,0,2,2,5,2,70,8,2,2,0

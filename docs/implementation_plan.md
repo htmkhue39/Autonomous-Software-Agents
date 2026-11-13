@@ -1,554 +1,334 @@
 # Implementation plan
 
-The order in which the agent is built. What it must do is in
-[project_requirement.md](project_requirement.md), and how it works and why
-is in [design.md](design.md); this plan refers to the design's sections
-rather than repeating them.
+This is the task tracker for turning the agreed [design](design.md) into working code. [Project requirements](project_requirement.md) define what must be demonstrated; this file defines **what to implement next, which code to reuse, and how to prove each milestone is complete**.
 
-The work is split into phases. Each phase ends with something that can be
-run or shown, and each one builds only on the phases before it. Within a
-phase, tasks are small enough to finish, test and commit in one sitting.
+**Development order:** complete Part 1 -> complete Part 2 -> establish benchmarks -> compare alternative strategies -> select final configuration. Keep existing functionality and tests. Before each task, inspect the current working tree; a checked box in this document is not a substitute for a passing test.
 
-## Where we are
+## Current baseline
 
-| Phase | What it delivers | Tasks | Status |
+| Area | Existing code | Status | Next step |
 |---|---|---|---|
-| 0. Setup | A connection to the game server, and what we learned from it | 1 | Done |
-| 1. Beliefs | The agent's picture of the world | 2, 3, 3b | Done |
-| 2. Choosing what to do | Routes, and options with scores | 4, 5 | Done |
-| 3. Acting | An agent that plays on its own | 6, 7 | Task 6 next |
-| 4. External planner | Movement planned by PDDL | 8 | Completes Part 1 |
-| 5. Instructions in the BDI agent | Goals and constraints, written by hand | 9 | |
-| 6. The LLM agent | Instructions in plain language | 10, 11 | Completes Part 2 |
-| 7. Tuning and results | Measured scores and the README | 12 | |
+| SDK and per-agent config | `src/client.js`, `src/config.js`, `.env.example` | [x] Implemented | Extend for chat/tools and action timeout safety only as needed. |
+| Belief representation/revision | `src/beliefs/*`, `src/types.js` | [x] Implemented | Preserve and test integration with actions/messages. |
+| A* navigation | `src/planning/astar.js` | [x] Implemented | Reuse; do not replace. |
+| Option generation / expected-reward utility | `src/deliberation/*` | [x] Implemented | Fix unlimited-capacity handling; preserve baseline policy. |
+| SDK smoke/demo scripts | `src/observe.js`, `src/follow-path.js`, `src/pickup-deliver.js` | [x] Present | Keep as diagnostics until replaced by reliable integration tests. |
+| Autonomous movement and plans | `src/plans/` | [x] Implemented; previously verified live | Stage 1.1 pickup/movement fixes require local recheck. |
+| Intention revision and BDI run loop | `src/intentions/`, `src/index.js` | [x] Implemented and observed live | Stage 1.1 commitment/cooldown policy requires local recheck. |
+| External PDDL planning | `src/planning/pddl/` | [x] Real solver invoked and route executed on local Mac | Retest after Stage 1.1; preserve actual `pddl_success` evidence. |
+| Second LLM agent | `src/llm/`, `src/llm-agent.js` (proposed) | [ ] Missing | Tasks 10–13. |
+| Team communication and coordination | `src/coordination/` (proposed) | [ ] Missing | Task 14. |
+| Benchmarks and final write-up | `scripts/benchmarks/`, `docs/results.md` (proposed) | [ ] Missing | Tasks 16–18. |
 
-Work happens on the branch `feature/bdi-agent`.
+Stage 1.1 checks against the **current ZIP**: **105/105** tests passed (`npm test`) and strict JSDoc checking passed (`tsc -p jsconfig.json`) with Node type definitions available. The team has previously demonstrated `npm start` on a real local Deliveroo.js server, autonomous delivery/scoring, and genuine external `pddl_success` with executed solver routes on 2026-11-11. **These live checks used the preceding Stage 1 source**. Repeat the local acceptance checks for the newly fixed Stage 1.1 build; use [stage1_1_local_testing.md](stage1_1_local_testing.md). Keep the team's private `.env` out of shared ZIPs.
 
-## How each task is done
+## Workflow for every task
 
-1. Write the tests the task describes, run them, and see them fail because
-   the feature is missing.
-2. Write the feature until they pass.
-3. Run the whole test suite and the type check; both must pass.
-4. Commit, and tick the task here.
+1. Read the relevant requirement and section of `design.md`.
+2. Inspect the existing code and tests first; prefer extending a tested component over introducing a duplicate.
+3. State the smallest interface/contract change and write focused failing tests where practical.
+4. Implement only the task in progress. Do not simultaneously add deferred optimization policies.
+5. Run the relevant tests, the whole suite (`npm test`), and `npm run typecheck`. If a network/server dependency is unavailable, report the blocked live check accurately.
+6. Update the checkbox and document the actual outcome. Avoid marking live validations complete based on mocks.
 
-If something behaves differently from what the plan expects, find out why
-before changing a test. If the plan turns out to be wrong, fix the plan and
-say why next to the task.
-
----
-
-## Phase 0: Setup (done)
-
-The project was set up and connected to the course server before any
-decision logic was written, so that the design rests on what the server
-really does rather than on documentation. What was learned is in
-[design.md](design.md), section 9.
-
-**Task 1: Set up the project and observe the server** (done)
-
-- [x] Project created with the game library, the PDDL client and settings
-  from `.env`.
-- [x] A game client wrapper that never crashes the agent: a failed or
-  unanswered move reports failure, a failed pickup or putdown reports no
-  parcels.
-- [x] The shared data types in `src/types.js`.
-- [x] Demo scripts that observe the server, follow a path, and pick up and
-  deliver a parcel.
-- [x] Observations recorded.
+All new filesystem paths below are **suggested**, not compulsory: align them with any equivalent code already in the live branch.
 
 ---
 
-## Phase 1: Beliefs
+## Phase A — Finish Part 1 fundamentals
 
-The agent's picture of the world ([design.md](design.md), section 1). This
-phase needs no server: everything is tested with small hand-made maps.
+### Task 5a — Correct known baseline edge cases
 
-**Task 2: Map beliefs** (done)
+**Reuse:** `src/deliberation/options.js`, existing option tests; `src/client.js` for action safety.
 
-The map knows every tile's type, which tiles can be walked on, which tiles
-are blocked for a while (crates), which moves were refused, where the agent can step from
-each tile, where the delivery and spawn tiles are, and when each tile was
-last in view.
+- [x] Correct pickup capacity so `capacity === -1` means unlimited; add a regression test. Do not alter the original scoring algorithm while fixing this.
+- [x] Review `client.move()` response behavior for rejected vs unresolved actions. Design single-flight action execution and state reconciliation; do not automatically treat a timed-out move as definitely failed.
+- [ ] Verify current SDK and map assumptions (tile types, special plugins, moving positions) in a local or course-server smoke check; record unsupported configurations.
+- [x] Re-run all existing tests and typecheck after fixes (105 tests total; local typecheck with available Node typings).
 
-- [x] 8 tests, written first and seen to fail, now passing.
-- [x] Committed.
+**Done when:** existing tests still pass; unlimited capacity is handled; failures and uncertain action outcomes have explicit tests/handling in subsequent runner work.
 
-**Task 3: Parcels, other agents, and all beliefs together** (done)
+### Task 6 — Movement runner and predefined plan library
 
-Files: `src/beliefs/parcels.js`, `src/beliefs/agents.js`,
-`src/beliefs/index.js`, and their tests.
+**Reuse:** `src/client.js`, `src/beliefs/index.js`, `src/beliefs/map.js`, `src/planning/astar.js`.
 
-What it should do:
+**Likely files:** `src/plans/moveTo.js`, `src/plans/library.js`, `test/plans.test.js`, `test/fake-client.js`.
 
-- Turn the server's decay setting ("1s", "2s", "10s", "1m", "infinite" and
-  so on) into milliseconds. "Infinite" means parcels never lose value.
-- Remember each parcel's position, value, carrier and when it was seen, and
-  estimate its value now: one point less per decay interval since then,
-  never below zero.
-- Forget a parcel when its tile is in view and the parcel is not there, or
-  when its value reaches zero. Parcels being carried are not forgotten this
-  way (changed in Task 3b).
-- List the free parcels (not carried, still worth something), and the
-  parcels a given agent carries.
-- Remember other agents' rounded positions and when they were seen. Only
-  agents seen in the last few seconds block a tile.
-- Hold everything together: the agent itself, the map, parcels and other
-  agents, fed by the server's messages. Take the map size from the tiles,
-  not from the server's map message, which reports one less. Round the
-  agent's own position, which is fractional while it moves. Never store the
-  agent itself among the other agents. Mark every tile in view as seen now.
-  Block tiles holding a crate for a short time.
-- Be "ready" only once the server settings, the map and the agent's own
-  position are all known, and announce every change, so the agent can
-  rethink.
+- [x] Build an **abortable, single-flight** action runner. Never issue two concurrent moves for one agent identity.
+- [x] Walk towards a target using the existing A* pathfinder; re-evaluate the next step after observations or a blocked edge.
+- [x] Use `map.failMove(...)` and `map.moveSucceeded(...)` to update beliefs when outcomes are known. On timeout/disconnection, reconcile position before another move.
+- [x] Implement predefined plans with applicability + success/failure/cancel contracts: `moveTo`, `pickup`, `deliver`, `explore`.
+- [x] Reuse `ParcelBeliefs.pickedUp(...)` and `.putDown(...)` after successful SDK actions; handle already-taken, decayed, and unreachable parcels.
+- [x] Add focused tests for successful route, refused movement, ambiguous timeout, cancellation, disappeared pickup, delivery and single-flight actions; Stage 1.1 adds pickup reconciliation and diagnostics regressions.
 
-Tests should show that:
+**Done when:** given a selected option, the agent can perform the associated plan, update beliefs, and return a meaningful terminal outcome in fake-client tests.
 
-- each decay setting becomes the right number of milliseconds, and an
-  infinite one means no decay;
-- a parcel loses one point per interval since it was last seen;
-- free parcels leave out carried and worthless ones, and a parcel is
-  forgotten when its tile is seen empty;
-- the parcels carried by an agent are listed;
-- only recently seen agents block tiles, at rounded positions;
-- the agent's own position is rounded, and it is not counted as another
-  agent;
-- tiles in view are marked as seen;
-- beliefs become ready only when all three pieces have arrived, and every
-  update is announced.
+### Task 7 — Intentions, revision and autonomous BDI loop
 
-- [x] Tests written and seen to fail (23 tests)
-- [x] Parcels, agents and combined beliefs written; suite and type check
-  pass
-- [x] Committed
+**Reuse:** `src/deliberation/options.js`, `src/deliberation/utility.js`, `src/beliefs/index.js`, and Task 6 runner.
 
-**Task 3b: Parcel beliefs on the game clock** (done)
+**Likely files:** `src/intentions/intention.js`, `src/intentions/revision.js`, `src/index.js`, `test/intentions.test.js`, `test/agent-loop.test.js`.
 
-Added after checking the server on 23 October ([design.md](design.md),
-sections 1 and 9). Two gaps were found: times were measured on the local
-clock, not the server's, and a carried parcel was never forgotten, so a
-parcel the agent had delivered still counted as carried (worse when parcels
-never decay), and so did one another agent had carried away.
+- [ ] Model intention states (`pending`, `running`, `completed`, `failed`, `cancelled`) and a cancellable plan lifecycle.
+- [x] Implement the baseline rule in `design.md`: keep intention unless invalidated or a new option is clearly preferable; start with `replaceMargin = 1.2` and existing option priorities.
+- [x] Invalidate pickup immediately when its target is confirmed gone/claimed by another agent or impossible; re-evaluate rather than walking to a dead target.
+- [x] Avoid repeated external work on every sensing event: serialize the decision loop, debounce/coalesce redundant notifications when useful, and cancel superseded plans safely.
+- [x] Create the missing `src/index.js` entry point; initialize config, SDK connection, beliefs and plan runner, then run until stopped.
+- [x] Add initial agent-loop and intention tests; Stage 1.1 adds delivery commitment, exploration stability, hard invalidation, commitment interval and failed-goal cooldown regression tests. Additional corner cases can be added as encountered.
+- [x] **Previous-build live smoke test:** BDI agent ran on local Deliveroo.js and delivered for score; fresh Stage 1.1 smoke test is pending.
 
-Files: `src/beliefs/clock.js`, `src/beliefs/parcels.js`,
-`src/beliefs/index.js`, `src/client.js`, and their tests.
+**Done when:** `npm start` runs a stable autonomous BDI agent end-to-end, without manual commands. This is the **Part 1 predefined-plan baseline**, not yet the external-planning requirement.
 
-What it should do:
+### Task 8 — External PDDL planner called on intention activation
 
-- Keep the game time: each sensing message or ping with a frame sets it to
-  frame times `CLOCK`, and between messages it moves on with the local
-  clock. Every time in the beliefs uses it.
-- Forget a parcel another agent carries when the tile where it was last
-  seen is in view and the parcel is not there.
-- Learn the parcels the agent carries from its own actions: the parcels a
-  pickup returns become carried by it, and the parcels a putdown returns
-  are no longer carried; on a delivery tile they are forgotten.
+**Reuse:** existing `@unitn-asa/pddl-client` dependency, `src/planning/astar.js` for distance estimates/fallback, Task 6 plan executor.
 
-Tests should show that:
+**Likely files:** `src/planning/pddl/domain.pddl`, `problem.js`, `solve.js`, `test/pddl.test.js` and small orchestration changes to Task 7.
 
-- game time follows the frames and moves on between them;
-- a parcel loses value by the game time passed, even when the local clock
-  says otherwise;
-- a parcel carried by another agent is forgotten once its last tile is seen
-  without it, and kept while that tile is out of view;
-- a picked-up parcel counts as carried before sensing reports it;
-- parcels put down on a delivery tile are forgotten, and no longer count
-  as carried.
+- [x] Build a valid PDDL domain/problem reflecting currently walkable tiles, start, goal and reachable moves (respecting relevant current constraints).
+- [x] Integrate the **course PDDL client** with an actual external solver; team-provided local logs showed successful returned plans and executed moves.
+- [x] Call the external planner on movement-plan initiation for newly activated intentions in compliant mode; log solver calls, outcomes, latency and fallback. A no-op at an already-reached target does not need a route.
+- [x] Cache the resulting executable plan; replan when it becomes invalid, not on every movement frame.
+- [x] Provide bounded timeout/error/empty-plan behavior. Fallback to A* when appropriate, but distinguish *solver succeeded* from *fallback succeeded* in logs/tests.
+- [x] Preserve an A*-based baseline mode for experiments; ensure the compliant mode invokes PDDL regardless of the option kind when movement planning is needed (e.g. already-at-goal can be explicitly treated as a no-op).
+- [x] Tests cover PDDL domain/problem, planner invocation, valid/invalid result, timeout, fallback and executing returned moves; further live route-replanning edge cases remain possible.
+- [x] **Previous-build live smoke test:** real remote solver `pddl_success` and planned movement followed by a parcel delivery observed in team logs; rerun with Stage 1.1 before closing stability gate.
 
-- [x] Tests written and seen to fail (11 tests, one Task 3 test changed to
-  the new rule)
-- [x] Clock and parcel changes written; suite and type check pass
-- [x] Checked read-only on the server: the game time follows the ping
-  frames
-- [x] Committed
+**Done when:** Part 1's required automated-planning behavior is demonstrated, not merely mocked or simulated through A*.
 
-**Phase 1 is finished when** the agent's whole picture of the world can be
-built from server messages and every rule above is covered by a test.
+### Stage 1 delivery status (previous build verified live; Stage 1.1 local check pending)
+
+- [x] `src/index.js` starts the autonomous BDI controller and prints structured JSON lines.
+- [x] Predefined pickup/deliver/explore plans and abortable movement tested in a deterministic fake-client harness.
+- [x] Unlimited capacity, moving-agent occupancy, and directional arrow handling regression-tested.
+- [x] `@unitn-asa/pddl-client` adapter, PDDL generation/validation, solver timeout and logged fallback implemented and tested with an injected solver.
+- [x] 103 unit and fake-client tests pass after Stage 1.1; `tsc -p jsconfig.json` passes with Node typings available.
+- [x] Previous build verified with actual local Deliveroo.js server, pickup/delivery, and observed score increases. Stage 1.1 changes still require a fresh run.
+- [x] Previous build logged genuine `pddl_success` against a live external solver and executed moves; retest the updated code. A `planner_fallback` alone does not prove PDDL success.
+- [ ] Verify the installed SDK version against the local server, including transitional move acknowledgements and plugin map behavior.
+
+See the root README's **Stage 1 local manual verification** instructions. The Stage 1 work is delivered as a testable candidate, **not yet a certified Challenge 1 run**.
+
+### Gate A — Part 1 completion
+
+- [ ] All existing and new unit tests pass; typecheck passes.
+- [x] Previous-build agent played autonomously and scored through the SDK and predefined plans.
+- [x] Belief revision and intention revision are observable in logs/tests; Stage 1.1 refines revision correctness.
+- [x] Previous build invoked the real external solver and executed returned PDDL moves.
+- [ ] Run the **current Stage 1.1** A*/PDDL smoke tests and verify improved pickup/goal recovery behavior.
+- [ ] Record the available Challenge 1 / course-simulation scenarios when instructor setup is provided.
+
+**Do not start performance optimization before the Stage 1.1 live stability gate passes.**
 
 ---
 
-## Phase 2: Choosing what to do
 
-Routes, and the scoring that decides what is worth doing
-([design.md](design.md), sections 2 and 4). Still no server needed.
+## Stage 1.1 — Runtime stability update (complete in code, local re-test pending)
 
-**Task 4: A\* path finding** (done)
+**Scope:** Stabilize the existing BDI implementation; do not change the utility equation, PDDL domain, or Part 2 architecture.
 
-File: `src/planning/astar.js`, and its tests.
+- [x] **Pickup acknowledgment:** `src/plans/library.js` records `pickup_ack` response shape/IDs, updates beliefs for all acknowledged parcels, and confirms the target using ACK or a bounded positive sensing update. Other collected parcels are not discarded when the target is missed. A genuinely unconfirmed pickup remains failed.
+- [x] **Intention commitment:** `src/intentions/agent.js` avoids invalidating applicable delivery/exploration plans merely because other options re-rank. Deliveries stay committed; ordinary pickup switching has a minimum commitment interval. Future explicitly higher-priority goals may preempt.
+- [x] **Failed-goal cooldown:** failed/unknown goals are temporarily excluded from selection. The cooldown expires; no permanent target blacklist is introduced.
+- [x] **Navigation diagnostics:** `src/plans/moveTo.js` logs attempted edges and tile types on refusals, impossible destinations, and cancelled navigation progress. Serialized action handling and explicit PDDL→A* fallbacks remain.
+- [x] **Instrumentation:** `npm run summarize -- logs/example.log` counts key decisions, actions, failures and successful PDDL latency; game server frontend is unchanged.
+- [x] **Regression tests:** new Stage 1.1 tests for pickup ACK/sensing, false positives, carried-other-parcel preservation, delivery/ exploration stability, soft switching, failed-goal cooldown, hard invalidation, and navigation diagnostics.
+- [x] **Automated gate:** 105/105 tests and strict typecheck pass in the delivery working copy.
+- [x] **Local functional gate (team):** A* and real external PDDL have both been demonstrated on `oval_counterclockwise`. A* log: 35 pickups, 13 delivery events, 1 refused move, last logged score 431. PDDL log: 32 successful solver plans, 3 fallbacks, 6 delivery events, last logged score 47; mean successful solver latency 3325 ms. Scores are last observed, **not verified saved timed-round results**. Separate repeated benchmarking remains open.
 
-What it should do:
+The previous build's real-game logs, including its successful external solver run and known failures, are summarized in `docs/stage1_test_report.md`. **Team-provided live logs now demonstrate Stage 1.1 autonomous gameplay and real external planning.** These runs do not establish tournament performance rankings or all level/plugin compatibility.
 
-- Find a shortest route between two tiles as a list of moves. The route is
-  empty when the agent is already there, and there is no route when the
-  target cannot be reached.
-- Follow the map's neighbours, so walls and blocked tiles are respected.
-- Never enter a tile where an agent was recently seen, or a tile a user
-  constraint forbids (Phase 5), not even as the target.
-- Given several targets, find the closest one that can be reached, and the
-  route to it.
+## Phase B — Add the second LLM-based agent (Part 2)
 
-Tests should show: an empty route when already there; the obvious route in
-a straight line; a shortest detour around a wall; no route to an
-unreachable tile; occupied and forbidden tiles avoided, including as the
-target; the closest of several targets picked; and nothing returned when
-no target can be reached.
+### Task 9 — LLM provider abstraction and local Ollama smoke test
 
-- [x] Tests written and seen to fail (13 tests)
-- [x] A\* written; suite and type check pass
-- [x] Committed
+**Likely files:** `src/llm/providers/ollama.js`, `src/llm/providers/course.js`, `src/llm/provider.js`, `test/llm-provider.test.js`, `.env.example`.
 
-*Changed afterwards:* a refused move used to block the whole tile for a
-fixed two seconds. Once that expired, A\* planned straight back into a
-passage that never worked, and the agent could loop there. The map now
-remembers the refused move itself, avoids it twice as long each time it is
-refused again (up to `maxBlockedMs`), and forgets it once the move works
-([design.md](design.md), section 4). Four more tests cover this. Task 6
-must call `failMove` and `moveSucceeded` after each step.
+- [x] Define an injectable `chat` provider contract and add request cancellation, timeout, structured response validation and HTTP error handling.
+- [x] Implement the HTTP Ollama adapter without new npm dependencies; default local development configuration: `LLM_PROVIDER=ollama`, `OLLAMA_BASE_URL=http://127.0.0.1:11434`, `OLLAMA_MODEL=qwen3.5:4b-q4_K_M`.
+- [ ] **User local acceptance:** run `npm run llm:smoke` on the installed Qwen model and record true native tool-call behavior; compare `npm run llm:smoke:json` if needed. JSON fallback is implemented and verified using fake-model tests.
+- [x] Keep the provider contract injectable; do not implement an ungrounded course-specific HTTP/auth adapter before official specifications exist.
+- [x] Keep the Stage 2A demo free of secrets and game credentials; `.env.example` contains only localhost settings.
 
-**Task 5: Scoring and options** (done)
+**Stage 2A status:** provider code, fake-model and fake-HTTP tests passed; **real local Qwen smoke passed on the user's Mac**. The independent game agent is now implemented in Stage 2B, pending live verification.
 
-Files: `src/deliberation/utility.js`, `src/deliberation/options.js`, and
-their tests.
+### Task 10 — Tools and dynamic LLM memory
 
-What it should do:
+**Likely files:** `src/llm/memory.js`, `src/llm/tools/catalog.js`, `src/llm/tools/execute.js`, `test/llm-memory.test.js`, `test/llm-tools.test.js`.
 
-- Score a trip by the reward expected at delivery: every parcel involved
-  loses value for each decay interval the whole trip takes, down to zero,
-  and the score is what is left. A move takes the time the server's
-  settings say.
-- Offer a **pickup** for each free parcel while the agent has room, when the
-  parcel can be reached and a delivery tile can be reached from it. The trip
-  is the walk to the parcel plus the walk on to the nearest delivery tile.
-- Offer **deliver** while the agent carries something and a delivery tile
-  can be reached.
-- Offer **explore** towards the reachable spawn tile seen longest ago, worth
-  zero.
-- Drop other options worth nothing, sort the rest best first, and give each
-  a short name so the same option can be recognised later.
+- [x] Implement bounded memory with objective/version, expiring JSON observations (can carry teammate state later), current plan and recent tool outcomes; actual game observation normalization remains for Stage 2B.
+- [x] Implement deterministic **non-game demo tools** and strict tool catalog; game SDK-backed tools and official tool-service adapter remain for Stage 2B/2D.
+- [x] Validate tool allowlist and argument schema before execution, with cancellation, deadlines, errors and unknown-outcome reporting. Game-specific state preconditions remain for SDK tools in Stage 2B.
+- [x] Bound memory events and observation age; clear prior tool history/plan when objectives are replaced.
+- [x] Add memory, objective replacement, invalid tool, expired observation and result feedback regression tests. Teammate belief conflicts will be covered with coordination in Stage 2C.
 
-Tests should show: decay applied to every parcel for the whole trip; values
-stopping at zero, and no decay when it is switched off; the more rewarding
-parcel ranked first even when it is further away; deliver offered only
-while carrying; no pickup at full capacity; explore heading for the spawn
-tile seen longest ago; and unreachable parcels, delivery tiles and parcels
-that could not be delivered producing no options and no crash.
+**Stage 2A status:** standalone memory and safe demo tool execution passed. Stage 2B adds game/state preconditions. The course tool catalog remains a separate integration requirement.
 
-- [x] Tests written and seen to fail (15 tests)
-- [x] Scoring and options written; suite and type check pass
-- [x] Committed
+### Task 11 — LLM planning, execution and replanning loop
 
-Energy is left out of the score until the course staff say whether it is
-active ([design.md](design.md), section 9).
+**Likely files:** `src/llm/agent.js`, `src/llm/planner.js`, `src/llm/executor.js`, `test/llm-agent.test.js`.
 
-**Phase 2 is finished when**, given any set of beliefs, the agent can list
-what it could do and how much each option is worth.
+- [x] Accept objective strings via an injectable loop input (hardcoded demo objective for smoke). Real CLI/official objective-event input adapter is Stage 2B/2D.
+- [x] Implement bounded **objective -> memory -> validated structured plan -> model tool call/JSON action -> validate -> execute demo tool -> update memory -> replan/finish**.
+- [x] Support cancellable objective replacement, and optional completion verifier; never report an unverified model claim as externally completed.
+- [x] Feed tool failure and refreshed observation into subsequent tool decisions. Game obstacle, parcel and teammate events will be wired in Stage 2B/2C; no per-frame LLM calls.
+- [x] Stage 2B reuses the existing movement/plan helpers as validated high-level LLM game tools; the original Stage 2A demo remains game-free.
+- [x] Add fake-LLM and fake-HTTP tests covering tool invocation, invalid plan/tool calls, revised feedback, objective replacement, loop limits, and completion verification.
 
----
+**Stage 2A status:** simulated model executes a validated multi-turn tool workflow; real Qwen smoke passed on the Mac; Stage 2B live-game acceptance remains open.
 
-## Phase 3: Acting
+### Task 12 — Second autonomous game identity and integration
 
-Turning the chosen option into moves, switching when something clearly
-better appears, and recovering from failures ([design.md](design.md),
-sections 3 and 4). At the end of this phase the agent plays on its own.
+**Reuse:** `src/config.js`, `src/client.js`, `src/beliefs/`, `src/plans/`, Task 11 LLM loop.
 
-**Task 6: Movement and plans**
+**Likely files:** `src/llm-agent.js`, `src/runtime/agent-context.js` (if useful), package scripts and `.env.example`.
 
-Files: `src/plans/moveTo.js`, `src/plans/library.js`, a fake game server
-added to the test helpers, and the tests.
+- [x] Implement an LLM runner using a **separate game identity** with its own token/config, SDK connection, beliefs and action runner (e.g. `AGENT=milktea`).
+- [x] Preserve the BDI agent as its own autonomous process/identity (e.g. `AGENT=bubble`).
+- [x] Share pure utility code; never share mutable beliefs or a single SDK socket between distinct players.
+- [x] Demonstrate with a **simulated SDK/game** that LLM plans trigger real movement/pickup/delivery modules and grounded completion.
+- [ ] Repeat the independent objective on the real local Deliveroo.js + Qwen server (Mac acceptance).
+- [x] Add stage 2B tool, state, objective, runtime and readiness regression tests.
+- [ ] Demonstrate **both identities concurrently** on the game server (Stage 2C entry gate).
 
-What it should do:
+**Done when:** both agents can run concurrently in the same game without controlling the same player.
 
-- Walk to a target one step at a time, planning a fresh route before every
-  step and taking only its first move. The route planner is passed in, so
-  A\* or PDDL can be used.
-- Stop when told to, before each step.
-- After a failed or unanswered move, record the refused move
-  (`failMove`) and try another route; after a move that works, clear it
-  (`moveSucceeded`). Give up after three failures.
-- Provide one plan for each kind of option: go to a tile; pick up (walk
-  there, pick up, and forget the parcel and fail if it is gone); deliver
-  (walk there, put down, and forget the delivered parcels); explore (walk
-  there). Pickup and putdown results go into the beliefs (Task 3b).
+### Task 13 — Communication and task coordination
 
-The fake game server moves the agent in its beliefs, and can be told to
-make moves fail or go unanswered on chosen tiles, and what a pickup
-returns.
+**Likely files:** `src/coordination/protocol.js`, `src/coordination/messenger.js`, `src/coordination/claims.js`, `test/coordination.test.js`; small `src/client.js` additions.
 
-Tests should show: the agent reaches its target; it stops when told; a
-refused move is remembered and walked around; it gives up when the only route
-keeps failing; an unanswered move counts as a failure without crashing;
-pickup and deliver walk first and then act; a parcel someone else took
-makes pickup fail and is forgotten; and every kind of option has exactly
-one plan.
+- [ ] Extend the SDK wrapper with **official in-game messaging**; verify receive-event signatures against the installed SDK.
+- [ ] Exchange relevant BELIEF, INTENTION, CLAIM, RELEASE and completion/failure messages using a small validated protocol.
+- [ ] Give each message identity, version/sequence and freshness information; reject stale/malformed/duplicate messages.
+- [ ] Start with parcel claims and deterministic conflict resolution; expire claims when teammates disconnect or cease reporting.
+- [ ] Feed received beliefs into each agent's belief revision without blindly treating them as certain observations.
+- [ ] Test simultaneous claims, message delay/duplicates, release, timeout, teammate unavailability, and two-agent division of work.
 
-- [ ] Fake game server added
-- [ ] Tests written and seen to fail
-- [ ] Movement and plans written; suite and type check pass
-- [ ] Committed
+**Done when:** logs and game behavior show that two autonomous agents exchange beliefs/intentions and coordinate real tasks rather than merely sending chat messages.
 
-**Task 7: Intentions and the agent loop**
+### Task 14 — Real course LLM/tools/objective integration
 
-Files: `src/intentions/intention.js`, `src/intentions/revision.js`,
-`src/index.js`, and their tests. The observation demo script is removed.
+**Likely files:** adapters under `src/llm/providers/`, `src/llm/tools/`, `src/llm/objectives/`.
 
-What it should do:
+- [ ] Obtain/verify the course-provided LLM API and tool-catalog specifications, credentials, and objective input channel.
+- [ ] Connect the LLM-agent adapter to the actual server-side tool catalog; validate that tool discovery and execution work end to end.
+- [ ] Support the actual natural-language objective delivery method (e.g., the relevant game/course messages), not just a local console.
+- [ ] Exercise changing/replaced objectives and execution-time replanning with the real services.
+- [ ] Keep local Ollama mode operational for reproducible development, and record exactly which provider/tool endpoint the final demo uses.
 
-- An intention holds one option, runs the plan for it, and can be stopped.
-  It fails when no plan fits or the plan crashes.
-- Decide whether to switch to a new option: never without a better option;
-  always when idle; never to the same option; always to a higher priority
-  and never to a lower one; otherwise only when the new option is worth
-  more than the current one times the margin and at least one point more.
-- The loop waits until beliefs are ready, commits to the best option,
-  carries it out, and repeats; with no options it waits for beliefs to
-  change.
-- On every change in beliefs, score the current intention again with fresh
-  values, compare it with the best option, and stop it if the switching
-  rule says so.
-- Stop a pickup intention at once, without the switching rule, when its
-  parcel is no longer free (another agent carries it, or it is gone). The
-  switching rule alone would keep it: the dead intention is worth 0, and
-  so is exploring, so nothing beats it by a point and the agent would walk
-  on to an empty tile.
-- The start-up file connects to the server, feeds every message into
-  beliefs, builds the plans with the chosen mover, and starts the loop.
+**Done when:** the LLM agent works with the infrastructure used for course evaluation, or an unresolved external dependency is recorded explicitly and tested as far as access permits.
 
-Tests should show each rule of the switching decision on its own; that a
-pickup intention is stopped when its parcel is taken by another agent or
-vanishes, even when only exploring is left; that an
-intention runs the plan that fits, that it fails when none fits or the plan
-crashes, and that a running plan notices when its intention is stopped.
+### Gate B — Part 2 completion
 
-- [ ] Tests written and seen to fail
-- [ ] Intentions and loop written; suite and type check pass
-- [ ] Start-up file written; observation script removed
-- [ ] Live run: within two minutes the agent picks up and delivers on its
-  own, its score rises, and the log shows it switching when a clearly
-  better parcel appears. Note the score after five minutes.
-- [ ] Turn the network off and on: the agent reconnects and carries on.
-- [ ] Committed
+- [ ] Part 1 remains operational after adding Part 2.
+- [ ] Two separate agents are connected and act concurrently.
+- [ ] LLM memory changes with objectives and observations.
+- [ ] Real LLM planning, tool execution and replanning are demonstrated.
+- [ ] Agents exchange beliefs/intention information and avoid duplicate assignments.
+- [ ] Course tool catalog and evaluation objective channel have been exercised when available.
+- [ ] Run and record available Challenge 2 / predefined simulation scenarios.
 
-**Phase 3 is finished when** the agent plays a full game on the course
-server without help.
+**Only after Gate B:** optimize tournament performance.
 
 ---
 
-## Phase 4: External planner
+## Phase C — Benchmarks and policy comparison
 
-Planning movement with an online PDDL planner ([design.md](design.md),
-section 5). This completes Part 1.
+### Task 15 — Reproducible evaluation harness
 
-**Before starting:** check that the online solver can be reached from your
-network and answers within a few seconds. If it cannot, ask the course
-staff for another solver address.
+**Likely files:** `src/metrics/`, `scripts/benchmarks/`, `docs/results.md`.
 
-**Task 8: PDDL mover**
+- [ ] Add structured event logs and a run manifest: scenario/map/configuration, provider/model, utility/revision/coordination policies, seed if exposed, and run duration.
+- [ ] Measure score, delivered parcels, failed actions, path length, decision and intention counts, PDDL calls/success/latency/fallbacks, LLM calls/latency/invalid actions, shared-claim conflicts and objective success.
+- [ ] Write scripts to run a matrix of configurations on comparable scenarios without embedding private credentials.
+- [ ] Establish **baseline results before changing any policy**; report multiple trials plus variability when possible.
 
-Files: `src/planning/pddl/domain.pddl`, `src/planning/pddl/problem.js`,
-`src/planning/pddl/solve.js`, changes to the movement and start-up files,
-and the tests.
+**Done when:** running the same experimental setup yields comparable machine-readable results and a human-readable summary.
 
-What it should do:
+### Task 16 — Utility and intention-policy alternatives
 
-- The domain describes movement only: the agent is at a tile, tiles are
-  connected in four directions, and one move action exists per direction.
-  It must be named "default", the name the planner library always uses.
-- The problem is built from beliefs: one object per walkable tile, a
-  connection for each possible step (leaving out tiles with agents or
-  forbidden by constraints), where the agent is, and where it should be.
-- The solver's answer is turned back into moves. No plan, an error, or no
-  answer within five seconds all count as "no route". If the agent is
-  already at the target, the solver is not asked.
-- The PDDL mover keeps its plan between steps and asks again only after a
-  failed move or a new target. When the solver gives no route, it says so
-  in the log and A\* plans the route instead.
-- A setting in `.env` chooses A\* (the default) or PDDL.
+- [ ] Introduce a policy selector with a stable input/output contract; keep the existing `expectedReward` behavior as the named baseline.
+- [ ] Implement a **marginal pickup gain** policy: compare pickup-detour reward against deliver-now reward.
+- [ ] Optionally implement reward-per-time and uncertainty-aware policies after the marginal policy is benchmarked.
+- [ ] Parameterize intention switching and compare baseline `1.2` with other margins using the same scenarios.
+- [ ] Ensure policies do not double-count carried rewards, violate capacity semantics, or bypass intention-revision safety rules.
+- [ ] Preserve baseline mode and document results, not just a preferred winner.
 
-Tests use a fake solver and should show: valid tile names; a problem
-listing the tiles, connections, start and goal; connections matching the
-map and leaving out occupied and forbidden tiles; solver answers turned into
-moves; no solver call when already there; no route on no plan, error or
-timeout; and the agent still arriving, with A\*, when the solver fails.
+### Task 17 — Exploration and coordination alternatives
 
-- [ ] Solver reachability checked
-- [ ] Domain written
-- [ ] Tests written and seen to fail
-- [ ] Problem, solver call and PDDL mover written; suite and type check
-  pass
-- [ ] Live run with PDDL: the log shows solver requests and the agent
-  plays; note the score after five minutes
-- [ ] Committed
+- [ ] Benchmark the current least-recently-seen exploration against a distance-aware or spawn-aware policy.
+- [ ] Compare independent-agent behavior (where meaningful) against the baseline claim/release coordination.
+- [ ] If baseline data justifies it, test nearest-agent task assignment or role specialization.
+- [ ] Select a final policy using measured objective completion, score, reliability and latency; retain fallback behavior.
 
-**Phase 4 is finished when** the agent can play with either mover, chosen by
-a setting, and never stalls when the solver fails.
+### Task 18 — Final validation and delivery
+
+- [ ] Run full unit/integration/typecheck suite and a fresh live two-agent demonstration.
+- [ ] Verify startup instructions, `.env.example`, required npm scripts, supported modes, external services and clear error messages.
+- [ ] Update `README.md` with actual setup, two-agent launch, PDDL and Ollama/course-provider options, and verified limitations.
+- [ ] Produce the final report (maximum 10 pages) covering architecture, BDI and LLM reasoning, planning, revision, coordination, controlled comparisons, results and limitations.
+- [ ] Prepare a repeatable oral demonstration and submit by the instructor-announced deadline.
 
 ---
 
-## Phase 5: Instructions in the BDI agent
+## Requirement coverage
 
-Teaching the BDI agent to follow goals and respect constraints, written by
-hand, before any LLM is involved ([design.md](design.md), section 6).
-
-**Before starting:** Part 2 has not been discussed in detail yet. Go
-through the open questions at the end of design section 6 (where
-instructions come from, which ones to support, one program or two), update
-the design and the requirements, and adjust this phase and the next to
-match. The task below follows the current first version.
-
-**Task 9: Goals and constraints**
-
-Files: `src/llm/directives.js`, `src/beliefs/directives.js`, changes to
-beliefs, options and the agent loop, and the tests.
-
-What it should do:
-
-- Accept goals (go to a tile, pick up a given parcel, deliver now, pause,
-  resume) and constraints (avoid an area, stay in an area, a minimum parcel
-  value, a maximum number carried, clear everything).
-- Check every instruction against the beliefs and reject, with a reason,
-  any that is unknown, points off the map or at a wall, names a parcel the
-  agent does not know, or has a meaningless value. Areas are put in order
-  and must overlap the map.
-- Apply constraints: forbidden tiles for routes and options, cheap parcels
-  ignored, a lower carrying limit, no options at all while paused, and
-  everything reset by "clear".
-- Turn the oldest waiting goal into an option with higher priority than any
-  of the agent's own. A goal that cannot be reached, or "deliver now" with
-  nothing carried, is marked failed with a reason.
-- Track each goal as waiting, in progress, done or failed, and announce
-  every change. A stopped goal goes back to waiting.
-- With no instructions, nothing changes.
-
-Tests should show: valid instructions accepted and areas put in order;
-invalid ones rejected with a reason; options unchanged with no
-instructions; a goal outranking a valuable parcel; unreachable goals and
-"deliver now" with nothing carried marked failed; each constraint having
-its effect; pause, resume and clear working; and goal changes announced.
-
-- [ ] Part 2 questions settled; design, requirements and plan updated
-- [ ] Tests written and seen to fail
-- [ ] Goals and constraints written; suite (including every earlier test)
-  and type check pass
-- [ ] Live run: a hand-written pause after 20 seconds and resume after 30
-  stop and restart the agent (remove the temporary change afterwards)
-- [ ] Committed
-
-**Phase 5 is finished when** hand-written instructions change what the
-agent does, and the agent with no instructions plays exactly as before.
-
----
-
-## Phase 6: The LLM agent
-
-Letting a person give instructions in plain language
-([design.md](design.md), section 6). This completes Part 2.
-
-**Task 10: The LLM agent, with a fake LLM**
-
-File: `src/llm/agent.js`, and its tests. No network needed.
-
-What it should do:
-
-- Give the LLM one tool: a list of instructions plus a reply for the user.
-- Build the prompt: the LLM's role (it turns requests into instructions and
-  never moves the agent), each instruction type with an example, the
-  direction rules, the map size, the agent's position and load, the known
-  parcels and delivery tiles, and the instructions already active.
-- Keep the last ten messages of the conversation.
-- Check every instruction first; if any is invalid, apply none and explain
-  each problem. Otherwise apply them all and pass on the LLM's reply.
-- If the LLM cannot be reached, answers without the tool, or sends
-  something malformed, say so and change nothing.
-
-Tests use a fake LLM and should show each of those cases.
-
-- [ ] Tests written and seen to fail
-- [ ] LLM agent written; suite and type check pass
-- [ ] Committed
-
-**Task 11: The real LLM and the console**
-
-Files: `src/llm/provider.js`, `src/llm/console.js`, and changes to the
-settings and start-up file. The LLM connection has no unit tests; it is
-checked live.
-
-**Before starting:** choose the LLM and get a key (the course lab uses the
-university's OpenAI-compatible service).
-
-What it should do:
-
-- Read the LLM key and model from `.env`.
-- Send the prompt, the conversation and the tool to the LLM, ask it to use
-  the tool, and hand back what it returned. Give up after 30 seconds.
-- Show a prompt in the terminal, pass each line to the LLM agent and print
-  the reply. A status command shows active instructions and goals without
-  asking the LLM. Print every goal change as it happens.
-- Start the console only when an LLM key is set, and keep the agent's own
-  logging quiet enough not to bury it.
-
-Live check, comparing with the game view:
-
-| Type | Expect |
+| Requirement | Main tasks/gate |
 |---|---|
-| stop for a moment | the agent stops; status shows it paused |
-| carry on | it moves again |
-| only take parcels worth at least 20 | cheaper parcels are ignored |
-| go to the bottom-left corner | it walks there and the console reports done |
-| stay out of the top half of the map | it never goes there |
-| go to 999, 999 | the reply says the tile does not exist; nothing changes |
-| forget all of that | back to normal |
-| deliver now, with the network off | the LLM is reported unreachable; the agent keeps playing |
+| P1-01 Beliefs and revision | Existing beliefs + Task 5a + Gate A |
+| P1-02 Intentions and revision | Task 7 + Gate A |
+| P1-03 Predefined plans | Task 6 + Gate A |
+| P1-04 External automated planner | Task 8 + Gate A |
+| P1-05 Plan execution/replanning | Tasks 6–8 + Gate A |
+| P1-06 Challenge 1 | Gate A |
+| P2-01 Second game agent | Task 12 + Gate B |
+| P2-02 Interpret objectives | Tasks 9, 11, 14 + Gate B |
+| P2-03 Dynamic memory | Task 10 + Gate B |
+| P2-04 Tool planning and replanning | Tasks 10–11, 14 + Gate B |
+| P2-05 Course tool catalog | Tasks 10, 14 + Gate B |
+| P2-06 Belief/intention coordination | Task 13 + Gate B |
+| P2-07 Challenge 2 | Gate B |
+| Submission and measured improvement | Tasks 15–18 |
 
-- [ ] LLM chosen and key obtained
-- [ ] Settings, LLM connection and console written
-- [ ] Live check passed
-- [ ] Suite and type check pass; committed
+## Next coding-agent task
 
-**Phase 6 is finished when** a person can steer the agent in plain language
-and always hears back what happened.
+Next, run **`docs/stage2b_local_testing.md`** on the Mac. Verify separate `milktea` identity, native Qwen tool calls, real SDK pickup and delivery, and score/parcel evidence. Preserve logs without tokens. Then start Stage 2C coordination; do not refactor the BDI algorithms just to add the LLM.
 
----
 
-## Phase 7: Tuning and results
+## Stage 2C — cooperative multi-agent extension (implemented; live test pending)
 
-Measuring the finished agent, improving its settings, and writing up the
-results.
+- Added SDK message adapter, versioned protocol, peer discovery, bounded messages, peer identity/name checks, de-duplication and freshness validation.
+- Both agents broadcast current intentions and direct parcel observations; received parcels are incorporated only when newer than their local direct observations, preserving decay ages.
+- Short-lived claims with renewal/release, path cost arbitration, incumbent preference, bounded conflict settlement, and an LLM tool guard prevent most duplicate pursuits.
+- BDI `BdiAgent` respects contested parcels during option selection and can cancel an intention when it loses a claim. LLM `collect_and_deliver` / `pickup_parcels` claim before executing.
+- `COORDINATION_ENABLED=false` by default; independent A* and PDDL baselines are unchanged.
+- Added unit and fake-SDK two-agent integration tests and `npm run summarize:coop`.
+- **Pending:** real two-player Deliveroo.js + Ollama run on the user's Mac; objective and communication logs; multiple matched-run score comparisons; unpublished course service integrations.
 
-**Task 12: Tune and document**
+See `docs/stage2c_local_testing.md` and `docs/stage2c_test_report.md`.
 
-- [ ] Measure first: five minutes with A\* and five with PDDL on the same
-  map, scores noted.
-- [ ] Change one setting at a time and measure again after each:
+## Stage 2C.1 — Reliability patch
 
-| Setting | Try | Too low | Too high |
-|---|---|---|---|
-| Switching margin | 1.0, 1.2, 1.5 | switching back and forth | ignoring much better parcels |
-| How long a refused move is first avoided | 1, 2, 4 s | repeated failed moves | long detours |
-| How long a seen agent blocks a tile | 1, 3 s | walking into agents | avoiding empty tiles |
-| PDDL time limit | 2, 5 s | falling back to A\* too often | long pauses |
+Status: **implemented in this package and passing automated local tests; live Mac verification pending**.
 
-- [ ] Rewrite the README: what the project is, how to set it up, how to
-  run each mode and the tests, how the code is organised, the reading
-  order of the documents, and a results table (A\* and PDDL scores and the
-  map used) with the list of supported instructions.
-- [ ] Suite and type check pass; committed.
+1. Distinguish static impossibility from agent occupancy and wait a bounded interval for congestion to clear; preserve one-way map semantics and PDDL support.
+2. Provide LLM-visible delivery-time feasibility estimates, conservative parcel reward decay predictions, and target cooldowns.
+3. Log recovery outcomes and separate malformed tool calls from real failed game actions.
+4. Reduce unnecessary coordination broadcasts while retaining claim/lease correctness.
+5. Verify via 175 regression tests and strict typechecking, then run matched real-game scenarios using the Mac guide.
 
-**Phase 7 is finished when** the README shows measured results and the
-settings are the best ones found.
+**Constraints unchanged:** no new professor-provided API assumed, BDI and LLM roles stay distinct, and Stage 2C communication is still optional for controlled comparisons. See `docs/stage2c1_local_testing.md`.
 
----
+## Stage 2C.2 — Execution-time parcel selection patch
 
-## How the plan covers the requirements
+Status: **implemented, deterministic regression tests passed; live Mac verification pending**.
 
-| Requirement | Tasks | Shown by |
-|---|---|---|
-| R1.1 Beliefs | 2, 3 | tests |
-| R1.2 Deliberation and intentions | 5, 7 | tests and the live run in Task 7 |
-| R1.3 Plans | 6, 7 | tests and the live run in Task 7 |
-| R1.4 External planner | 8 | tests and the PDDL live run |
-| R1.5 Replanning and revision | 6, 7 | tests and the live run in Task 7 |
-| R2.1 Instructions from a person | 11 | live check |
-| R2.2 LLM interpretation | 10, 11 | tests with a fake LLM and the live check |
-| R2.3 Goals and constraints | 9, 10 | tests |
-| R2.4 Coordination with the BDI agent | 9, 10, 11 | tests and the live check |
+- Keep Stage 2C.1 BDI, PDDL, navigation and coordination unchanged.
+- Add `collect_best_and_deliver` to the LLM tool catalog for high-level strategy selection and just-in-time parcel choice using fresh game beliefs.
+- Preserve separate exact-ID calls for objectives naming a particular parcel.
+- Bound exploration and retry *only* precondition-rejected targets, never uncertain or post-dispatch SDK actions.
+- Expose observation freshness and structured alternatives; label precondition rejection separately in metrics.
+- Measure delivered parcels per LLM call, precondition rejection count, and verified objective completion against Stage 2C.1 in repeated comparable live runs.
+- Course-hosted API, exact official tools and objective interface remain pending instructors' release; do not infer compliance with unspecified contracts.
+
+See `docs/stage2c2_local_testing.md` and `docs/stage2c2_test_report.md`.

@@ -11,7 +11,20 @@
     "observe": "node src/observe.js",
     "typecheck": "npx -y -p typescript tsc -p jsconfig.json",
     "path": "node src/follow-path.js",
-    "deliver": "node src/pickup-deliver.js"
+    "deliver": "node src/pickup-deliver.js",
+    "summarize": "node scripts/summarize-run.js",
+    "llm:smoke": "node scripts/llm-smoke.js",
+    "llm:smoke:json": "node scripts/llm-smoke.js --json",
+    "start:llm": "node src/llm-agent.js",
+    "summarize:llm": "node scripts/summarize-llm-run.js",
+    "summarize:coop": "node scripts/summarize-coop-run.js",
+    "benchmark": "node scripts/run-benchmark.js",
+    "benchmark:summary": "node scripts/summarize-benchmark.js",
+    "benchmark:ablation": "node scripts/run-ablation.js",
+    "course:audit": "node scripts/audit-course.js",
+    "course:smoke": "node scripts/course-adapter-smoke.js",
+    "course:validate": "node scripts/course-validate.js",
+    "course:failure-tests": "node --test test/action-gate.test.js test/stage2c1.test.js test/stage2c2-yield.test.js test/stage4b-integration.test.js test/stage4c-validation.test.js"
   },
   "repository": {
     "type": "git",

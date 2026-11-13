@@ -13,8 +13,8 @@ import { DjsConnect } from '@unitn-asa/deliveroo-js-sdk/client';
 /**
  * Connect to the Deliveroo.js server. This is the only file that imports the
  * SDK; everything else uses the returned client and the types in types.js.
- * The actions never reject: a failed or timed-out move is `false`, a failed
- * pickup or putdown is `[]`.
+ * SDK-reported refusals return false/empty arrays. Transport errors propagate:
+ * the caller must treat them as uncertain outcomes, not as definite refusals.
  * @param {Pick<AppConfig, 'host' | 'token' | 'name'>} config
  * @returns {Client}
  */
@@ -23,27 +23,15 @@ export function connect(config) {
 
   /** @param {Direction} dir */
   async function move(dir) {
-    try {
-      return await socket.emitMove(dir);
-    } catch {
-      return false;
-    }
+    return socket.emitMove(dir);
   }
 
   async function pickup() {
-    try {
-      return await socket.emitPickup();
-    } catch {
-      return [];
-    }
+    return socket.emitPickup();
   }
 
   async function putdown() {
-    try {
-      return await socket.emitPutdown();
-    } catch {
-      return [];
-    }
+    return socket.emitPutdown();
   }
 
   /** @param {(config: ServerConfig) => void} callback */
@@ -72,7 +60,13 @@ export function connect(config) {
    * @param {(me: AgentState) => void} callback
    */
   function onYou(callback) {
-    socket.on('you', callback);
+    socket.on('you', (/** @type {any[]} */ ...args) => {
+      if (args.length === 1 && args[0] && typeof args[0] === 'object') callback(args[0]);
+      else if (args.length >= 5) {
+        const [id, name, x, y, score] = args;
+        callback({ id, name, x, y, score });
+      }
+    });
     onSensing((sensing) => {
       if (sensing.self) callback(sensing.self);
     });
@@ -88,5 +82,21 @@ export function connect(config) {
     });
   }
 
-  return { socket, move, pickup, putdown, onConfig, onMap, onTile, onSensing, onYou, onPing };
+  /** @param {string} message */
+  function shout(message) { return socket.emitShout(message); }
+
+  /** @param {string} toId @param {string} message */
+  function say(toId, message) { return socket.emitSay(toId, message); }
+
+  /** @param {string} toId @param {string} message */
+  function ask(toId, message) { return socket.emitAsk(toId, message); }
+
+  /** @param {(id:string,name:string,message:unknown,reply?:((message:unknown)=>void))=>void} callback */
+  function onMessage(callback) {
+    socket.onMsg(callback);
+    return () => socket.off('msg', callback);
+  }
+
+  return { socket, move, pickup, putdown, onConfig, onMap, onTile, onSensing, onYou, onPing,
+    shout, say, ask, onMessage };
 }

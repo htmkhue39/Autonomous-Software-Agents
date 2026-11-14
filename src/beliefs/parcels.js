@@ -33,6 +33,8 @@ export function decayIntervalMs(event, clockMs) {
 export class ParcelBeliefs {
   /** @type {Map<string, { parcel: Parcel, seenAt: number }>} */
   #known = new Map();
+  /** @type {Set<TileKey>} the tiles the agent could see at the last update */
+  #inView = new Set();
 
   /** @param {number} decayMs  one point lost per this many milliseconds */
   constructor(decayMs) {
@@ -53,6 +55,7 @@ export class ParcelBeliefs {
     const seen = new Set(parcels.map(p => p.id));
     /** @type {Set<TileKey>} */
     const viewed = new Set(inView.map(({ x, y }) => key(x, y)));
+    this.#inView = viewed;
     for (const [id, { parcel }] of this.#known) {
       if (seen.has(id) || (selfId !== undefined && parcel.carriedBy === selfId)) continue;
       if (viewed.has(key(Math.round(parcel.x), Math.round(parcel.y)))) this.#known.delete(id);
@@ -117,6 +120,20 @@ export class ParcelBeliefs {
       return undefined;
     }
     return { ...entry.parcel, reward };
+  }
+
+  /**
+   * How many milliseconds since the parcel was last seen. It is 0 while the
+   * parcel's tile is in view: the server sends sensing only when something
+   * changes, so if nothing came, the parcel is still there.
+   * @param {string} id
+   * @param {number} now
+   */
+  unseenFor(id, now) {
+    const entry = this.#known.get(id);
+    if (!entry) return Infinity;
+    const { x, y } = entry.parcel;
+    return this.#inView.has(key(Math.round(x), Math.round(y))) ? 0 : now - entry.seenAt;
   }
 
   /**

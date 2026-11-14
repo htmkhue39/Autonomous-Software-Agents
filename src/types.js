@@ -155,6 +155,8 @@
  * @property {number} agentTtlMs       how long a sighted agent counts as an obstacle
  * @property {number} maxMoveRetries
  * @property {number} pddlTimeoutMs
+ * @property {number} parcelHalfLifeMs  after this long out of sight, a parcel is still there with 50% chance (with no other agent around)
+ * @property {number} minParcelChance   parcels less likely than this to still be there are ignored, e.g. 0.2 = 20%
  */
 
 /**

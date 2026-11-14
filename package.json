@@ -8,7 +8,6 @@
   "scripts": {
     "test": "node --test 'test/*.test.js'",
     "start": "node src/index.js",
-    "observe": "node src/observe.js",
     "typecheck": "npx -y -p typescript tsc -p jsconfig.json",
     "path": "node src/follow-path.js",
     "deliver": "node src/pickup-deliver.js",

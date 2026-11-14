@@ -73,7 +73,14 @@ export class Beliefs {
   }
 
   /**
-   * The server reports a size one too small, so it is taken from the tiles.
+   * The server sends the map when a game starts and after every
+   * reconnection. Each time, the agent forgets the parcels and agents it
+   * knew, because a new game reuses parcel ids (an old 'p5' would be taken
+   * for the new 'p5'). Parcels the agent is carrying are not lost: the next
+   * sensing reports them, since they are on the agent's own tile.
+   *
+   * The server reports a map size one too small, so the size is taken from
+   * the tiles.
    * @param {number} _width
    * @param {number} _height
    * @param {Tile[]} tiles
@@ -82,6 +89,8 @@ export class Beliefs {
     const width = Math.max(...tiles.map(t => t.x)) + 1;
     const height = Math.max(...tiles.map(t => t.y)) + 1;
     this.map = new GridMap(width, height, tiles, { blockedTtlMs: this.blockedTtlMs, maxBlockedMs: this.maxBlockedMs });
+    this.parcels = new ParcelBeliefs(this.parcels.decayMs);
+    this.agents = new AgentBeliefs(this.agents.ttlMs);
     this.#changed();
   }
 

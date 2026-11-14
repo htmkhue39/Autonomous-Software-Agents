@@ -51,6 +51,9 @@ up to 5 on the map at once.
 The course defines two parts. In Part 2 the LLM does not replace the BDI
 agent: it extends how the agent can be instructed and controlled.
 
+For now the project aims at Part 1 only: a complete BDI agent that plays
+as well as we can make it. Part 2 follows once Part 1 is finished.
+
 ### Part 1: an autonomous BDI agent
 
 | | Requirement | Met when |

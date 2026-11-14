@@ -129,3 +129,84 @@ test('nothing is offered for parcels and tiles that cannot be reached', () => {
   see(beliefs, [parcel('c', 1, 10, 'me')]);
   assert.equal(listOptions(beliefs).some(o => o.type === 'deliver'), false);
 });
+
+// ---------------------------------------------------------------------------
+// Parcels out of view fade
+// ---------------------------------------------------------------------------
+
+const fading = { halfLifeMs: 10_000, minChance: 0.2 };
+
+test('a parcel unseen for long ranks below a fresh one of equal value', () => {
+  // Parcels never lose value here. For both p1 and p2 the trip is 4 moves:
+  // 2 to the parcel, then 2 to a delivery tile. Only p1 has been out of
+  // sight for 5 s.
+  const { beliefs, clock } = world(['233333332'], { x: 4, y: 0 }, { decay: 'infinite' });
+  see(beliefs, [parcel('p1', 2, 20)]);
+  clock.t = 5000;
+  see(beliefs, [parcel('p2', 6, 20)]);
+  const options = listOptions(beliefs, fading).filter(o => o.type === 'pickup');
+  assert.deepEqual(options.map(o => o.parcelId), ['p2', 'p1']);
+  assert.equal(options[0].utility, 20);
+  assert.ok(options[1].utility < 20);
+});
+
+test('a parcel unseen for long enough is no longer offered', () => {
+  const { beliefs, clock } = world(['233333332'], { x: 4, y: 0 }, { decay: 'infinite' });
+  see(beliefs, [parcel('p1', 2, 20)]);
+  clock.t = 30_000;
+  assert.equal(listOptions(beliefs, fading).some(o => o.type === 'pickup'), false);
+});
+
+test('a parcel whose tile is in view does not fade', () => {
+  const { beliefs, clock } = world(['233333332'], { x: 4, y: 0 }, { decay: 'infinite' });
+  beliefs.onSensing({ positions: [{ x: 2, y: 0 }], agents: [], parcels: [parcel('p1', 2, 20)], crates: [] });
+  clock.t = 60_000;
+  assert.equal(listOptions(beliefs, fading).find(o => o.type === 'pickup')?.utility, 20);
+});
+
+test('a parcel fades faster with more agents around', () => {
+  /** @param {number} rivals */
+  const utilityWith = rivals => {
+    const { beliefs, clock } = world(['233333332', '333333333'], { x: 4, y: 0 }, { decay: 'infinite' });
+    const agents = Array.from({ length: rivals }, (_, i) => ({ id: `a${i}`, name: `a${i}`, x: 8, y: 1, score: 0 }));
+    beliefs.onSensing({ positions: [], agents, parcels: [parcel('p1', 2, 20)], crates: [] });
+    clock.t = 5000;
+    return listOptions(beliefs, fading).find(o => o.type === 'pickup')?.utility ?? 0;
+  };
+  assert.ok(utilityWith(2) < utilityWith(0));
+});
+
+// ---------------------------------------------------------------------------
+// Parcels another agent will reach first
+// ---------------------------------------------------------------------------
+
+/**
+ * A map of two rows. The delivery tile is at (0,0), our agent at (9,0) and
+ * the parcel at (4,0), 5 moves from us. Another agent 'r' is seen at each
+ * position of `path` in turn, on the top row. Returns whether the pickup is
+ * still offered.
+ * @param {{ x: number, y: number }[]} path
+ */
+function race(path) {
+  const { beliefs } = world(['3333333333', '2333333333'], { x: 9, y: 0 });
+  for (const { x, y } of path) {
+    beliefs.onSensing({ positions: [], agents: [{ id: 'r', name: 'r', x, y, score: 0 }], parcels: [parcel('p', 4, 20)], crates: [] });
+  }
+  return listOptions(beliefs).some(o => o.type === 'pickup');
+}
+
+test('a parcel is skipped when a closer agent is one step from it', () => {
+  assert.equal(race([{ x: 4, y: 1 }]), false);
+});
+
+test('a parcel is skipped when a closer agent moves towards it', () => {
+  assert.equal(race([{ x: 1, y: 1 }, { x: 2, y: 1 }]), false);
+});
+
+test('a parcel is kept when a closer agent moves away from it', () => {
+  assert.equal(race([{ x: 3, y: 1 }, { x: 2, y: 1 }]), true);
+});
+
+test('a parcel is kept when the other agent is further from it', () => {
+  assert.equal(race([{ x: 9, y: 1 }]), true);
+});

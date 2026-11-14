@@ -8,10 +8,12 @@ tiles for points.
 
 ## Status
 
-In progress. The agent can build its picture of the world from what the
-server sends, find routes, and list and score what it could do (steps 1 to
-4 below, covered by `npm test`). Choosing an intention and acting on it
-(steps 5 and 6) are not written yet, so `npm start` has nothing to run.
+In progress. The agent plays on its own with `npm start`: it builds its
+picture of the world from what the server sends, lists and scores what it
+could do, commits to the best option and switches only when a clearly
+better one appears (steps 1 to 6 below, covered by `npm test`). Next come
+movement planned by an external PDDL planner and instructions from a
+person through an LLM.
 
 ## How the agent works
 
@@ -81,7 +83,7 @@ cp .env.example .env
 Then get a token for your agent:
 
 1. In `.env`, set `AGENT` to the name you want (default `bubble`).
-2. Run `npm run observe` and copy the value from the `[token]` line.
+2. Run `npm start` and copy the value from the `[token]` line.
 3. Paste it into `.env` as `TOKEN_<NAME>`, for example `TOKEN_BUBBLE=...`.
 
 `.env` is git-ignored. Do not commit tokens.
@@ -94,7 +96,8 @@ variables and their defaults is at the end of `.env.example`.
 
 | Command | What it does |
 | --- | --- |
-| `npm run observe` | Logs in and prints what the server sends, then tries a few moves. |
+| `npm start` | Runs the agent. Stop it with Ctrl+C, which prints the score. |
+| `npm run server` | Runs a local copy of the course server on port 8080 (`GAME=<map>` picks the map; install it first with `npm run server:install`). Point the agent at it with `HOST=http://localhost:8080 npm start`. |
 | `npm run path` | Walks a predefined path, then tries a pickup. |
 | `npm run deliver` | Finds a parcel, picks it up and carries it to a delivery tile. |
 | `npm test` | Runs the tests. |
@@ -113,7 +116,9 @@ src/
   beliefs/           step 2: map, parcels, other agents
   deliberation/      steps 3 and 4: options and their scores
   planning/          A* route finding
-  observe.js         demo: print what the server sends
+  intentions/        step 5: the intention, the loop and the switching rule
+  plans/             step 6: walking, picking up and delivering
+  index.js           start-up: connects the parts and runs the loop
   follow-path.js     demo: walk a predefined path
   pickup-deliver.js  demo: pick up a parcel and deliver it
 test/                tests, run without a server

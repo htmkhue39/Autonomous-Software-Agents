@@ -70,6 +70,14 @@ reports:
   was last seen and it is not there.
 - **Itself.** Position, score and the parcels it carries.
 
+The server sends the map when a game starts and again after every
+reconnection. Each time, the agent forgets the parcels and other agents it
+knew. This matters because a new game reuses parcel ids: without it, an
+old parcel `p5` would be taken for the new `p5`. The parcels the agent is
+carrying are not lost. A carried parcel is always on its carrier's tile,
+and sensing reports every parcel on the tiles in view, including the
+agent's own tile.
+
 They are *beliefs*, not facts, because they can be wrong: a parcel seen ten
 seconds ago may already have been taken. The rest of the design is built to
 cope with that.
@@ -114,6 +122,26 @@ several parcels, every detour costs it decay on all of them, so "deliver
 now" soon becomes the best option. When it carries little and a good parcel
 is nearby, collecting wins.
 
+**Parcels out of sight count for less.** Without this, a parcel seen once
+would stay a target until its value reaches zero. On maps where parcels
+never lose value, that means forever, even if someone took it long ago.
+So the parcel's value is multiplied by the chance that it is still there:
+
+- While its tile is in view, the chance is 100%. The server sends news
+  only when something changes, so no news means the parcel is still
+  there.
+- Once it is out of sight, the chance halves every 20 seconds. Each other
+  agent the agent knows about makes it halve faster.
+- Below 20%, the parcel is not offered at all.
+
+The 20 seconds and the 20% are settings, to be tuned in live runs.
+
+**Parcels another agent will reach first are skipped.** The agent gives up
+on a parcel when another agent, seen in the last few seconds, is closer to
+it and is either right next to it or moving towards it. The other agent's
+distance is counted in a straight line on the grid, because its route is
+not known. An agent that is closer but moving away is ignored.
+
 **Exploring.** With no parcel in sight, every pickup scores zero. Standing
 still wastes time, and wandering at random revisits the same places. The
 agent heads instead for the **spawn tile it has not seen for the longest
@@ -146,8 +174,18 @@ fresh values (its parcel may have lost value or vanished) and compared with
 the best option. An intention to pick up a parcel that is gone, or that
 another agent now carries, is dropped at once without this comparison:
 worth zero, it would otherwise be kept against an explore option also
-worth zero, and the agent would walk on to an empty tile. User goals from Part 2 have a higher priority and always
-win over the agent's own options (section 6).
+worth zero, and the agent would walk on to an empty tile. The same is
+done for any pickup that is no longer offered: its parcel is probably
+gone, cannot be reached, or another agent will get there first. There is
+one exception: if the parcel is no longer offered because the agent itself
+just picked it up on the way, the pickup is done, not dropped. User goals from Part 2
+have a higher priority and always win over the agent's own options
+(section 6).
+
+When there is nothing to do, or the intention just failed, the agent waits
+until its beliefs change, or one second at most. The limit is needed
+because a refused move stops being avoided after a while, and no message
+from the server says so: a route may have opened up in the meantime.
 
 ## 4. How the agent moves
 
@@ -335,7 +373,9 @@ Things learned by connecting to the course server (map `long_hallways`,
   size is taken from the tiles instead.
 - While moving, positions are fractional (for example 18.6), so they are
   rounded before any path finding.
-- Sensing messages are sent only when something changes.
+- Sensing messages are sent only when something changes. In practice
+  every move of the agent brings one, so the agent can re-score its
+  options on every message without falling behind.
 - A move succeeds in about 0.2 s and a move into a wall fails in about
   0.04 s, well within the one-second limit.
 - Connecting by name creates a new agent each time; the token the server
@@ -377,9 +417,10 @@ Open questions:
   mission penalties do cost points, and the scoring does not count them
   yet. Left until the base agent plays on its own; energy to ask the course
   staff about.
-- **Own carried parcels in sensing.** Whether sensing reports the parcels
-  the agent carries itself. The design does not rely on it (section 1);
-  to check in the first live run.
-- **The PDDL solver.** Whether the online solver is reachable and fast
-  enough from our network. To check before building the PDDL mover.
-- **Part 2.** The questions listed at the end of section 6.
+- **How fast the PDDL solver is on a whole map.** The course's solver
+  (`solver.planning.domains:5001`, through `@unitn-asa/pddl-client`)
+  works from our network: on 14 November 2026 it solved a problem with
+  four tiles in 2.8 to 3.9 s. How long a whole map takes is still to be
+  measured, before the PDDL mover is built.
+- **Part 2.** The questions listed at the end of section 6. Part 2 waits
+  until Part 1 is finished.

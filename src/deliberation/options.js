@@ -8,14 +8,29 @@ import { expectedReward } from './utility.js';
  */
 
 /**
+ * The longer a parcel is out of sight, the more likely someone else has
+ * taken it (design.md section 2). Its value is multiplied by the chance
+ * that it is still there.
+ * @typedef {Object} Fading
+ * @property {number} [halfLifeMs]  after this many milliseconds out of
+ *   sight, the chance is 50% (with no other agent around). Each other agent
+ *   makes the chance drop faster. Default `Infinity`: the chance stays 100%.
+ * @property {number} [minChance]  a parcel whose chance is below this
+ *   (e.g. 0.2 = 20%) is not offered at all
+ */
+
+/**
  * Everything the agent could do now, best first (design.md section 2).
  * Pickups and deliveries are scored by the reward expected on delivery and
- * left out when worth nothing; exploring is always worth nothing. Options
- * that cannot be reached are left out.
+ * left out when worth nothing; exploring is always worth nothing. For a
+ * pickup, the new parcel's value is multiplied by the chance it is still
+ * there (see `Fading`). Left out: options that cannot be reached, and
+ * parcels another agent will probably get to first.
  * @param {Beliefs} beliefs
+ * @param {Fading} [fading]
  * @returns {Option[]}
  */
-export function listOptions(beliefs) {
+export function listOptions(beliefs, { halfLifeMs = Infinity, minChance = 0 } = {}) {
   const { config, map, me } = beliefs;
   if (!config || !map || !me) return [];
 
@@ -30,11 +45,17 @@ export function listOptions(beliefs) {
   const options = [];
 
   if (carried.length < config.GAME.player.capacity) {
+    const others = beliefs.agents.count;
     for (const parcel of beliefs.parcels.free(now)) {
+      const unseen = beliefs.parcels.unseenFor(parcel.id, now);
+      const chance = unseen === 0 || halfLifeMs === Infinity ? 1 : 0.5 ** (unseen * (1 + others) / halfLifeMs);
+      if (chance < minChance) continue;
       const there = findPath(map, me, parcel, paths);
-      const onward = there && findNearest(map, parcel, deliveries, paths);
-      if (!there || !onward) continue;
-      const utility = expectedReward([...carried, parcel.reward], there.length + onward.path.length, timing);
+      if (!there || beliefs.agents.beatsUsTo(parcel, there.length, now)) continue;
+      const onward = findNearest(map, parcel, deliveries, paths);
+      if (!onward) continue;
+      const moves = there.length + onward.path.length;
+      const utility = expectedReward(carried, moves, timing) + chance * expectedReward([parcel.reward], moves, timing);
       options.push({ id: `pickup:${parcel.id}`, type: 'pickup', x: parcel.x, y: parcel.y, utility, priority: 0, parcelId: parcel.id });
     }
   }

@@ -214,3 +214,20 @@ test('another agent is forgotten once sensing shows its tile without it', () => 
   beliefs.onSensing(sensing({ positions: [{ x: 2, y: 1 }] }));
   assert.deepEqual([...beliefs.agents.occupied(0)], []);
 });
+
+test('a new map starts a new game: parcels and agents from the old one are forgotten', () => {
+  const { beliefs } = makeBeliefs();
+  beliefs.onConfig(serverConfig());
+  beliefs.onMap(0, 0, tiles());
+  beliefs.onYou(ME);
+  beliefs.onSensing({
+    positions: [],
+    agents: [{ id: 'a', name: 'a', x: 2, y: 1, score: 0 }],
+    parcels: [{ id: 'p5', x: 1, y: 0, reward: 10, carriedBy: null }, { id: 'c', x: 0, y: 0, reward: 10, carriedBy: 'me' }],
+    crates: [],
+  });
+  beliefs.onMap(0, 0, tiles());
+  assert.deepEqual(beliefs.parcels.free(0), []);
+  assert.deepEqual(beliefs.parcels.carriedBy('me', 0), []);
+  assert.equal(beliefs.agents.get('a'), undefined);
+});

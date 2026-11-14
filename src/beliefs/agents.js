@@ -24,6 +24,13 @@ import { key } from './map.js';
 export class AgentBeliefs {
   /** @type {Map<string, SeenAgent>} */
   #seen = new Map();
+  /**
+   * For each agent, where it is now (`at`) and the different position it was
+   * seen at before that (`from`), not rounded. Used to tell which way it is
+   * going.
+   * @type {Map<string, { from: Position, at: Position }>}
+   */
+  #moves = new Map();
 
   /** @param {number} ttlMs  how long a sighting blocks its tile */
   constructor(ttlMs) {
@@ -42,9 +49,15 @@ export class AgentBeliefs {
     /** @type {Set<TileKey>} */
     const viewed = new Set(inView.map(({ x, y }) => key(x, y)));
     for (const [id, { tiles }] of this.#seen) {
-      if (!seen.has(id) && tiles.every(tile => viewed.has(tile))) this.#seen.delete(id);
+      if (!seen.has(id) && tiles.every(tile => viewed.has(tile))) {
+        this.#seen.delete(id);
+        this.#moves.delete(id);
+      }
     }
     for (const { id, name, x, y } of agents) {
+      const last = this.#moves.get(id);
+      if (!last) this.#moves.set(id, { from: { x, y }, at: { x, y } });
+      else if (last.at.x !== x || last.at.y !== y) this.#moves.set(id, { from: last.at, at: { x, y } });
       this.#seen.set(id, { id, name, x: Math.round(x), y: Math.round(y), tiles: heldTiles(x, y), seenAt: now });
     }
   }
@@ -52,6 +65,34 @@ export class AgentBeliefs {
   /** @param {string} id */
   get(id) {
     return this.#seen.get(id);
+  }
+
+  /** The number of other agents the agent remembers. */
+  get count() {
+    return this.#seen.size;
+  }
+
+  /**
+   * Whether another agent will probably get to `target` before us. That is
+   * the case when an agent seen in the last `ttlMs`:
+   * - is closer to `target` than we are, and
+   * - is next to `target`, or got closer to it since it was last seen.
+   * Its distance is counted in a straight line on the grid (we do not know
+   * its route).
+   * @param {Position} target
+   * @param {number} distance  our own number of moves to `target`
+   * @param {number} now
+   */
+  beatsUsTo(target, distance, now) {
+    /** @param {Position} p */
+    const away = p => Math.abs(p.x - target.x) + Math.abs(p.y - target.y);
+    for (const [id, { seenAt }] of this.#seen) {
+      const moves = this.#moves.get(id);
+      if (!moves || now - seenAt > this.ttlMs) continue;
+      const left = away(moves.at);
+      if (left < distance && (left <= 1 || left < away(moves.from))) return true;
+    }
+    return false;
   }
 
   /**

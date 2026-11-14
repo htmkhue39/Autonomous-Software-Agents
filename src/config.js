@@ -27,6 +27,8 @@ export function loadConfig(env) {
     agentTtlMs: num('AGENT_TTL_MS', 3000),           // how long a sighted agent counts as an obstacle
     maxMoveRetries: num('MAX_MOVE_RETRIES', 3),
     pddlTimeoutMs: num('PDDL_TIMEOUT_MS', 5000),
+    parcelHalfLifeMs: num('PARCEL_HALF_LIFE_MS', 20_000), // after 20 s out of sight, a parcel is still there with 50% chance (less with other agents around)
+    minParcelChance: num('MIN_PARCEL_CHANCE', 0.2),       // ignore parcels with less than 20% chance of still being there
   };
 }
 

@@ -1,7 +1,7 @@
 {
   "name": "autonomous-software-agents",
   "version": "1.0.0",
-  "description": "BDI autonomous agent for Deliveroo.js - ASA course, UniTN",
+  "description": "Cooperative BDI and LLM agents for Deliveroo.js (UniTN ASA course)",
   "directories": {
     "doc": "docs"
   },
@@ -9,7 +9,7 @@
     "test": "node --test",
     "start": "node src/index.js",
     "observe": "node src/observe.js",
-    "typecheck": "npx -y -p typescript tsc -p jsconfig.json",
+    "typecheck": "npx -y -p typescript@5.8.3 tsc -p jsconfig.json",
     "path": "node src/follow-path.js",
     "deliver": "node src/pickup-deliver.js",
     "summarize": "node scripts/summarize-run.js",
@@ -24,7 +24,8 @@
     "course:audit": "node scripts/audit-course.js",
     "course:smoke": "node scripts/course-adapter-smoke.js",
     "course:validate": "node scripts/course-validate.js",
-    "course:failure-tests": "node --test test/action-gate.test.js test/stage2c1.test.js test/stage2c2-yield.test.js test/stage4b-integration.test.js test/stage4c-validation.test.js"
+    "course:failure-tests": "node --test test/action-gate.test.js test/stage2c1.test.js test/stage2c2-yield.test.js test/stage4b-integration.test.js test/stage4c-validation.test.js",
+    "release:check": "node scripts/release-check.js"
   },
   "repository": {
     "type": "git",

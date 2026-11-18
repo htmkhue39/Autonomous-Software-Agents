@@ -32,13 +32,12 @@ test('neighbors returns walkable adjacent tiles with directions', () => {
   assert.deepEqual(map.neighbors(1, 2, 0), [{ x: 1, y: 1, dir: 'down' }]);
 });
 
-// No movement rule is assumed for arrow tiles: a move the server refuses
-// blocks the tile for a while instead (design.md section 4).
-test('arrow tiles can be entered and left in any direction', () => {
+// One-way arrows only permit travel in their specified direction.
+test('arrow tiles restrict traversal to their indicated direction', () => {
   const map = mapFromRows(['3→3']);
   assert.deepEqual(map.neighbors(0, 0, 0), [{ x: 1, y: 0, dir: 'right' }]);
-  assert.deepEqual(map.neighbors(2, 0, 0), [{ x: 1, y: 0, dir: 'left' }]);
-  assert.deepEqual(map.neighbors(1, 0, 0).map(n => n.dir).sort(), ['left', 'right']);
+  assert.deepEqual(map.neighbors(2, 0, 0), []);
+  assert.deepEqual(map.neighbors(1, 0, 0).map(n => n.dir), ['right']);
 });
 
 test('delivery and spawn tiles are listed', () => {

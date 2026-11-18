@@ -14,6 +14,8 @@ import { key } from './map.js';
  * @property {number} y       rounded
  * @property {TileKey[]} tiles  the tiles it holds: two while it moves between them
  * @property {number} seenAt
+ * @property {number} rawX
+ * @property {number} rawY
  */
 
 /**
@@ -45,7 +47,7 @@ export class AgentBeliefs {
       if (!seen.has(id) && tiles.every(tile => viewed.has(tile))) this.#seen.delete(id);
     }
     for (const { id, name, x, y } of agents) {
-      this.#seen.set(id, { id, name, x: Math.round(x), y: Math.round(y), tiles: heldTiles(x, y), seenAt: now });
+      this.#seen.set(id, { id, name, x: Math.round(x), y: Math.round(y), rawX: x, rawY: y, seenAt: now });
     }
   }
 
@@ -61,10 +63,27 @@ export class AgentBeliefs {
    */
   occupied(now) {
     const result = new Set();
-    for (const { tiles, seenAt } of this.#seen.values()) {
-      if (now - seenAt <= this.ttlMs) for (const tile of tiles) result.add(tile);
+    for (const detail of this.occupiedDetails(now)) {
+      for (const tile of detail.tiles) result.add(key(tile.x, tile.y));
     }
     return result;
+  }
+
+  /** Human-readable, bounded diagnostics; sighting age matters for recovery.
+   * @param {number} now
+   */
+  occupiedDetails(now) {
+    const details = [];
+    for (const { id, name, rawX, rawY, seenAt } of this.#seen.values()) {
+      const ageMs = Math.max(0, now - seenAt);
+      if (ageMs > this.ttlMs) continue;
+      const tiles = [];
+      for (const x of new Set([Math.floor(rawX), Math.ceil(rawX)])) {
+        for (const y of new Set([Math.floor(rawY), Math.ceil(rawY)])) tiles.push({ x, y });
+      }
+      details.push({ id, name, ageMs, tiles });
+    }
+    return details;
   }
 }
 

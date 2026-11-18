@@ -29,7 +29,7 @@ export function listOptions(beliefs) {
   /** @type {Option[]} */
   const options = [];
 
-  if (carried.length < config.GAME.player.capacity) {
+  if (config.GAME.player.capacity === -1 || carried.length < config.GAME.player.capacity) {
     for (const parcel of beliefs.parcels.free(now)) {
       const there = findPath(map, me, parcel, paths);
       const onward = there && findNearest(map, parcel, deliveries, paths);

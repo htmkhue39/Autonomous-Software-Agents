@@ -6,7 +6,7 @@
     "doc": "docs"
   },
   "scripts": {
-    "test": "node --test",
+    "test": "node --test 'test/*.test.js'",
     "start": "node src/index.js",
     "observe": "node src/observe.js",
     "typecheck": "npx -y -p typescript@5.8.3 tsc -p jsconfig.json",

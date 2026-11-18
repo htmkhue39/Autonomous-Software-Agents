@@ -8,7 +8,6 @@ import { Beliefs } from '../src/beliefs/index.js';
 function serverConfig(decay = /** @type {import('../src/types.js').ClockEvent} */ ('1s')) {
   return {
     CLOCK: 50,
-    PENALTY: 1,
     AGENT_TIMEOUT: 10000,
     GAME: {
       title: 'test',
@@ -100,14 +99,36 @@ test('times in the beliefs follow the game clock, not the local clock', () => {
   assert.equal(beliefs.parcels.get('p', beliefs.now())?.reward, 8);
 });
 
-test('the agent learns what it carries from its own pickup and putdown', () => {
+/**
+ * A pickup or putdown reply as the server really sends it: the parcels,
+ * without their ids (design.md section 9).
+ * @param {number} x
+ * @param {number} y
+ */
+function reply(x, y) {
+  return [{ xy: { x, y }, reward: 10, expired: false }];
+}
+
+test('a pickup that returns parcels makes the free parcels on the agent\'s tile carried', () => {
+  const { beliefs } = readyBeliefs();
+  beliefs.onSensing(sensing({ parcels: [{ id: 'p', x: 0, y: 0, reward: 10, carriedBy: null }] }));
+  beliefs.onPickup(reply(0, 0));
+  assert.deepEqual(beliefs.parcels.carriedBy('me', 0).map(p => p.id), ['p']);
+});
+
+test('a pickup that returns nothing forgets the parcels believed on the agent\'s tile', () => {
+  const { beliefs } = readyBeliefs();
+  beliefs.onSensing(sensing({ parcels: [{ id: 'p', x: 0, y: 0, reward: 10, carriedBy: null }] }));
+  beliefs.onPickup([]);
+  assert.equal(beliefs.parcels.get('p', 0), undefined);
+});
+
+test('parcels put down on a delivery tile are forgotten', () => {
   const { beliefs } = readyBeliefs();
   beliefs.onMap(2, 1, [...tiles().filter(t => !(t.x === 1 && t.y === 0)), { x: 1, y: 0, type: '2' }]);
-  beliefs.onSensing(sensing({ parcels: [{ id: 'p', x: 0, y: 0, reward: 10, carriedBy: null }] }));
-  beliefs.onPickup([{ id: 'p' }]);
-  assert.deepEqual(beliefs.parcels.carriedBy('me', 0).map(p => p.id), ['p']);
-  beliefs.onYou({ ...ME, x: 1, y: 0 });                // onto the delivery tile
-  beliefs.onPutdown([{ id: 'p' }]);
+  beliefs.onSensing(sensing({ parcels: [{ id: 'p', x: 0, y: 0, reward: 10, carriedBy: 'me' }] }));
+  beliefs.onYou({ ...ME, x: 1, y: 0 });
+  beliefs.onPutdown(reply(1, 0));
   assert.deepEqual(beliefs.parcels.carriedBy('me', 0), []);
   assert.equal(beliefs.parcels.get('p', 0), undefined);
 });
@@ -116,8 +137,15 @@ test('a parcel put down off a delivery tile is left there, free', () => {
   const { beliefs } = readyBeliefs();
   beliefs.onSensing(sensing({ parcels: [{ id: 'p', x: 0, y: 0, reward: 10, carriedBy: 'me' }] }));
   beliefs.onYou({ ...ME, x: 2, y: 1 });
-  beliefs.onPutdown([{ id: 'p' }]);
+  beliefs.onPutdown(reply(2, 1));
   assert.deepEqual(beliefs.parcels.free(0).map(p => [p.id, p.x, p.y]), [['p', 2, 1]]);
+});
+
+test('a putdown that returns nothing changes nothing', () => {
+  const { beliefs } = readyBeliefs();
+  beliefs.onSensing(sensing({ parcels: [{ id: 'p', x: 0, y: 0, reward: 10, carriedBy: 'me' }] }));
+  beliefs.onPutdown([]);
+  assert.deepEqual(beliefs.parcels.carriedBy('me', 0).map(p => p.id), ['p']);
 });
 
 test('a tile holding a crate is blocked for a short time', () => {
@@ -178,4 +206,11 @@ test('listen feeds beliefs from the client', () => {
   assert.equal(beliefs.map?.lastSeen(0, 0), 0);
   handlers.ping(20);
   assert.equal(beliefs.now(), 1000);
+});
+
+test('another agent is forgotten once sensing shows its tile without it', () => {
+  const { beliefs } = readyBeliefs();
+  beliefs.onSensing(sensing({ positions: [{ x: 2, y: 1 }], agents: [{ ...ME, id: 'other', x: 2, y: 1 }] }));
+  beliefs.onSensing(sensing({ positions: [{ x: 2, y: 1 }] }));
+  assert.deepEqual([...beliefs.agents.occupied(0)], []);
 });

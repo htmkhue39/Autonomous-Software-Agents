@@ -1,8 +1,6 @@
 import 'dotenv/config';
 
-// AGENT selects which of the two agents this process runs. Its token is read
-// from TOKEN_<AGENT>; with no token the server creates a new agent by name.
-const agent = (process.env.AGENT || 'bubble').toLowerCase();
+/** @typedef {import('./types.js').AppConfig} AppConfig */
 
 /** @type {import('./types.js').AppConfig} */
 export const config = {

@@ -22,7 +22,6 @@ function world(rows, me, { capacity = 5, decay = '1s' } = {}) {
   /** @type {ServerConfig} */
   const config = {
     CLOCK: 50,
-    PENALTY: 1,
     AGENT_TIMEOUT: 10000,
     GAME: {
       title: 'test',

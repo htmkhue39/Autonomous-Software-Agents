@@ -87,15 +87,20 @@ export class PlanLibrary {
       finally { this.log('sdk_action_phase', { action: 'pickup', durationMs: Math.round(performance.now() - dispatchedAt),
         status: result?.status ?? 'threw' }); }
       if (result.status !== 'ok') return { status: 'unknown', reason: result.status === 'unknown' ? result.reason : result.status };
-      const picked = Array.isArray(result.value) ? result.value.filter(p => p && typeof p.id === 'string') : [];
-      const ids = picked.map(p => p.id);
+      /** @type {unknown[]} */
+      const picked = Array.isArray(result.value) ? result.value : [];
+      // The reply may or may not carry parcel ids, so ids are used only when
+      // present. Whether the reply is empty is what tells the beliefs that
+      // the parcels on this tile are now carried.
+      const ids = picked.flatMap(p => {
+        const id = p && typeof p === 'object' ? /** @type {{ id?: unknown }} */ (p).id : undefined;
+        return typeof id === 'string' ? [id] : [];
+      });
       this.log('pickup_ack', {
-        targetParcelId: option.parcelId, returnedIds: ids,
+        targetParcelId: option.parcelId, returnedIds: ids, returnedCount: picked.length,
         responseShape: Array.isArray(result.value) ? 'array' : typeof result.value,
       });
-      // The server may acknowledge multiple parcels. Preserve *every*
-      // confirmed pickup, even when the requested target is missing.
-      if (ids.length) this.beliefs.onPickup(picked);
+      if (picked.length) this.beliefs.onPickup(picked);
       const targetInAck = ids.includes(option.parcelId ?? '');
       const confirmed = targetInAck || await this.#confirmCarried(option.parcelId ?? '');
       if (ids.length || confirmed) {
@@ -120,7 +125,14 @@ export class PlanLibrary {
       const dropped = Array.isArray(result.value) ? result.value : [];
       if (!dropped.length) return { status: 'failed', reason: 'Nothing dropped at delivery' };
       this.beliefs.onPutdown(dropped);
-      this.log('delivery', { parcelIds: dropped.map(p => p.id), beforeScore: before, x: option.x, y: option.y });
+      // One entry per dropped parcel, because the LLM's progress counts
+      // deliveries by the length of this list. An entry is null when the
+      // reply did not carry that parcel's id.
+      const parcelIds = dropped.map(p => {
+        const id = p && typeof p === 'object' ? /** @type {{ id?: unknown }} */ (p).id : undefined;
+        return typeof id === 'string' ? id : null;
+      });
+      this.log('delivery', { parcelIds, beforeScore: before, x: option.x, y: option.y });
       return { status: 'completed' };
     }
     return { status: 'failed', reason: 'Unknown plan type' };

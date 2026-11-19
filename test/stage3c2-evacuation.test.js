@@ -87,7 +87,7 @@ test('Stage 3C.2: when no safe non-delivery tile is reachable, keep verified del
   // teammate stands there after pickup, evacuation must not enter it.
   const p = await w.tools.invoke({ name:'pickup_parcels', arguments:{ parcel_id:'p' } });
   assert.equal(p.ok, true);
-  w.beliefs.agents.update([{ id:'other', name:'bubble', x:1, y:0, score:0 }], w.beliefs.now());
+  w.beliefs.agents.update([{ id:'other', name:'bubble', x:1, y:0, score:0 }], [], w.beliefs.now());
   const result = await w.tools.invoke({ name:'deliver_parcels', arguments:{} });
   assert.equal(result.ok, true);
   assert.equal(result.data.evacuation.status, 'no_safe_target');
@@ -98,9 +98,9 @@ test('Stage 3C.2: when no safe non-delivery tile is reachable, keep verified del
 test('Stage 3C.2: select a reachable unoccupied staging tile, respecting one-way arrows', () => {
   const w = setup({ rows:['21333'], x:4 });
   w.beliefs.onYou({ ...w.beliefs.me, x:0 });
-  w.beliefs.agents.update([{ id:'a0', name:'a0', x:1, y:0, score:0 }], w.beliefs.now());
+  w.beliefs.agents.update([{ id:'a0', name:'a0', x:1, y:0, score:0 }], [], w.beliefs.now());
   assert.equal(selectDeliveryParking(w.beliefs), null);
-  w.beliefs.agents.update([{ id:'a0', name:'a0', x:1, y:0, score:0 }], w.beliefs.now()-4000);
+  w.beliefs.agents.update([{ id:'a0', name:'a0', x:1, y:0, score:0 }], [], w.beliefs.now()-4000);
   const parking = selectDeliveryParking(w.beliefs);
   assert.ok(parking);
   assert.notEqual(w.beliefs.map.typeAt(parking.target.x, parking.target.y), '2');

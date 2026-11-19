@@ -47,7 +47,7 @@ export class AgentBeliefs {
       if (!seen.has(id) && tiles.every(tile => viewed.has(tile))) this.#seen.delete(id);
     }
     for (const { id, name, x, y } of agents) {
-      this.#seen.set(id, { id, name, x: Math.round(x), y: Math.round(y), rawX: x, rawY: y, seenAt: now });
+      this.#seen.set(id, { id, name, x: Math.round(x), y: Math.round(y), tiles: heldTiles(x, y), rawX: x, rawY: y, seenAt: now });
     }
   }
 

@@ -36,7 +36,7 @@ test('static diagnostic route ignores temporary block but keeps walls/arrows', (
 
 test('occupancy details report observed agent, fractional reserved tiles and freshness', () => {
   const agents = new AgentBeliefs(3000);
-  agents.update([{ id: 'a', name: 'NPC', x: 1.4, y: 0, score: 0 }], 100);
+  agents.update([{ id: 'a', name: 'NPC', x: 1.4, y: 0, score: 0 }], [], 100);
   const first = agents.occupiedDetails(600)[0];
   assert.equal(first.name, 'NPC');
   assert.equal(first.ageMs, 500);
@@ -47,12 +47,12 @@ test('occupancy details report observed agent, fractional reserved tiles and fre
 test('blocked by another agent: runner waits, re-observes and then navigates', async () => {
   const events = [];
   const w = stage1World({ rows: ['2333'], x: 3, log: (event, details) => events.push({ event, ...details }) });
-  w.beliefs.agents.update([{ id: 'a', name: 'npc', x: 2, y: 0, score: 0 }], w.beliefs.now());
+  w.beliefs.agents.update([{ id: 'a', name: 'npc', x: 2, y: 0, score: 0 }], [], w.beliefs.now());
   const runner = new MovementRunner({ beliefs: w.beliefs, client: w.client, gate: w.gate,
     mode: 'astar', congestionTimeoutMs: 500, congestionRetryMs: 20,
     log: (event, details) => events.push({ event, ...details }) });
   const timer = setTimeout(() => w.beliefs.agents.update([
-    { id: 'a', name: 'npc', x: 99, y: 0, score: 0 }], w.beliefs.now()), 55);
+    { id: 'a', name: 'npc', x: 99, y: 0, score: 0 }], [], w.beliefs.now()), 55);
   try {
     const result = await runner.moveTo({ x: 0, y: 0 }, { stopped: false });
     assert.equal(result.status, 'completed');
@@ -64,7 +64,7 @@ test('blocked by another agent: runner waits, re-observes and then navigates', a
 test('persistent congestion fails within the configured deadline and logs blockers', async () => {
   const events = [];
   const w = stage1World({ rows: ['2333'], x: 3 });
-  w.beliefs.agents.update([{ id: 'a', name: 'npc', x: 2, y: 0, score: 0 }], w.beliefs.now());
+  w.beliefs.agents.update([{ id: 'a', name: 'npc', x: 2, y: 0, score: 0 }], [], w.beliefs.now());
   const runner = new MovementRunner({ beliefs: w.beliefs, client: w.client, gate: w.gate,
     mode: 'astar', congestionTimeoutMs: 80, congestionRetryMs: 20,
     log: (event, details) => events.push({ event, ...details }) });
@@ -88,7 +88,7 @@ test('permanently unreachable map fails static-route check promptly', async () =
 
 test('congestion wait respects cancellation', async () => {
   const w = stage1World({ rows: ['2333'], x: 3 });
-  w.beliefs.agents.update([{ id: 'a', name: 'npc', x: 2, y: 0, score: 0 }], w.beliefs.now());
+  w.beliefs.agents.update([{ id: 'a', name: 'npc', x: 2, y: 0, score: 0 }], [], w.beliefs.now());
   const signal = { stopped: false };
   const runner = new MovementRunner({ beliefs: w.beliefs, client: w.client, gate: w.gate,
     mode: 'astar', congestionTimeoutMs: 300, congestionRetryMs: 20 });
@@ -190,7 +190,7 @@ test('heartbeat throttles repeated status and belief messages without delaying i
 test('LLM delivery can select statically reachable tile despite temporary occupancy', async () => {
   const w = stage1World({ rows: ['2133'], x: 3 });
   w.beliefs.onPickup([{ id: 'p' }]);
-  w.beliefs.agents.update([{ id: 'npc', name: 'npc', x: 0, y: 0, score: 0 }], w.beliefs.now());
+  w.beliefs.agents.update([{ id: 'npc', name: 'npc', x: 0, y: 0, score: 0 }], [], w.beliefs.now());
   let selected = null;
   const tools = createGameTools({ beliefs: w.beliefs, plans: {
     async execute(option) { selected = option; return { status: 'completed' }; }

@@ -9,11 +9,16 @@ test('with an empty environment every setting has its default', () => {
     name: 'bubble',
     mover: 'astar',
     replaceMargin: 1.2,
+    minCommitMs: 6000,
+    failedGoalCooldownMs: 10_000,
     blockedTtlMs: 2000,
     maxBlockedMs: 30_000,
     agentTtlMs: 3000,
     maxMoveRetries: 3,
+    congestionTimeoutMs: 3500,
+    congestionRetryMs: 180,
     pddlTimeoutMs: 5000,
+    actionTimeoutMs: 8000,
   });
 });
 

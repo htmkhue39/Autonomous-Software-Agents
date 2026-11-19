@@ -128,6 +128,19 @@ export class ParcelBeliefs {
   forget(id) { return this.#known.delete(id); }
 
   /**
+   * `agentId` just picked up the parcels with these ids. Parcels never seen
+   * are ignored: their value is unknown until sensing reports them.
+   * @param {string[]} ids
+   * @param {string} agentId
+   */
+  pickedUp(ids, agentId) {
+    for (const id of ids) {
+      const entry = this.#known.get(id);
+      if (entry) entry.parcel.carriedBy = agentId;
+    }
+  }
+
+  /**
    * `agentId` just picked up the parcels on `at`: the free parcels believed
    * there are now carried by it. The server's reply does not say which
    * parcels they were, only that there were some.

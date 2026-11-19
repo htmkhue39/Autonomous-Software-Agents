@@ -128,17 +128,24 @@ export class Beliefs {
   }
 
   /**
-   * The agent's pickup returned these parcels. The server's reply carries no
-   * parcel ids (design.md section 9), so only whether it is empty counts:
-   * if not, the free parcels believed on the agent's tile are now carried
-   * by it; if so, they are gone.
+   * The agent's pickup returned these parcels. When every returned parcel
+   * carries its id, exactly those parcels are now carried by the agent.
+   * The server's reply may carry no ids (design.md section 9), and then
+   * only whether it is empty counts: if not, the free parcels believed on
+   * the agent's tile are now carried by it; if so, they are gone.
    * @param {unknown[]} picked
    */
   onPickup(picked) {
     if (!this.me) return;
     const { x, y } = this.me;
-    if (picked.length > 0) this.parcels.pickedUpAt({ x, y }, this.me.id);
-    else this.parcels.forgetFreeAt({ x, y });
+    const ids = picked.map(p => (p && typeof p === 'object' ? /** @type {{ id?: unknown }} */ (p).id : undefined));
+    if (picked.length > 0 && ids.every(id => typeof id === 'string')) {
+      this.parcels.pickedUp(/** @type {string[]} */ (ids), this.me.id);
+    } else if (picked.length > 0) {
+      this.parcels.pickedUpAt({ x, y }, this.me.id);
+    } else {
+      this.parcels.forgetFreeAt({ x, y });
+    }
     this.#changed();
   }
 

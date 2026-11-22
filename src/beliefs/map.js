@@ -41,6 +41,22 @@ export class GridMap {
   #failedMoves = new Map();
   /** @type {Map<TileKey, number>} */
   #seenAt = new Map();
+  /** @type {{ deliveries: Set<TileKey>, spawns: Set<TileKey> } | null} cached until a tile changes */
+  #sustainable = null;
+  /** @type {Set<TileKey>} tiles where a crate was last seen */
+  #crates = new Set();
+  #doubleDelivery = false;
+
+  /**
+   * Whether the game scores parcels delivered on '9' tiles twice (the
+   * 'double-delivery' plugin). Without the plugin a '9' tile is not a
+   * delivery tile at all.
+   */
+  get doubleDelivery() { return this.#doubleDelivery; }
+  set doubleDelivery(on) {
+    if (on !== this.#doubleDelivery) this.#sustainable = null;
+    this.#doubleDelivery = on;
+  }
 
   /**
    * @param {number} width
@@ -66,8 +82,73 @@ export class GridMap {
     return this.#types.get(key(x, y));
   }
 
+  /**
+   * How many times their reward parcels delivered on (x, y) score: 1 on a
+   * '2' tile, 2 on a '9' tile when the game doubles them, and 0 anywhere else.
+   * @param {number} x
+   * @param {number} y
+   */
+  deliveryMultiplier(x, y) {
+    const type = this.typeAt(x, y);
+    if (type === '2') return 1;
+    if (type === '9' && this.doubleDelivery) return 2;
+    return 0;
+  }
+
+  /**
+   * Record the crates in view. A crate seen before on a tile that is now in
+   * view without it has been pushed away.
+   * @param {Position[]} crates
+   * @param {Position[]} inView
+   */
+  updateCrates(crates, inView) {
+    for (const { x, y } of inView) this.#crates.delete(key(x, y));
+    for (const { x, y } of crates) this.#crates.add(key(x, y));
+  }
+
+  /**
+   * @param {number} x
+   * @param {number} y
+   */
+  hasCrate(x, y) {
+    return this.#crates.has(key(x, y));
+  }
+
+  /** The tiles where crates are believed to be. @returns {Set<TileKey>} */
+  crateTiles() {
+    return new Set(this.#crates);
+  }
+
+  /**
+   * The agent moved in `dir` onto (x, y) and so pushed the crate there one
+   * tile further, if it believed one was there.
+   * @param {number} x
+   * @param {number} y
+   * @param {Direction} dir
+   */
+  cratePushed(x, y, dir) {
+    if (!this.#crates.delete(key(x, y))) return;
+    this.#crates.add(key(x + DIRS[dir].dx, y + DIRS[dir].dy));
+  }
+
+  /**
+   * Whether a crate on (x, y) can be pushed one tile in `dir`, as the course
+   * server allows (backend/src/core/movement/worldRules.js): the tile behind
+   * it must be a crate tile ('5' or '5!') with no other crate on it.
+   * @param {number} x
+   * @param {number} y
+   * @param {Direction} dir
+   * @param {ReadonlySet<TileKey>} [crates]  where the crates are, by default where they are believed to be
+   */
+  canPushCrate(x, y, dir, crates = this.#crates) {
+    const bx = x + DIRS[dir].dx;
+    const by = y + DIRS[dir].dy;
+    return (this.typeAt(bx, by) ?? '').startsWith('5') && !crates.has(key(bx, by));
+  }
+
   /** @param {Tile} tile */
   updateTile({ x, y, type }) {
+    if (this.#types.get(key(x, y)) !== type) this.#sustainable = null;
     this.#types.set(key(x, y), type);
   }
 
@@ -124,21 +205,36 @@ export class GridMap {
    * @param {number} x
    * @param {number} y
    * @param {number} now
-   * @param {{ignoreTemporary?:boolean}} [options] Diagnostic only: retain walls and one-way rules.
+   *
+   * A tile with a crate can only be entered when the move pushes the crate
+   * one tile further (see canPushCrate).
+   *
+   * An arrow tile only forbids stepping onto it against its arrow. Stepping
+   * onto it the way the arrow points, or from the side, is allowed, and it
+   * can be left in any direction, even against the arrow. This is the rule in
+   * the course server (backend/src/core/Tile.js) and what the user sees in
+   * the game.
+   * @param {{ignoreTemporary?:boolean, ignoreCrates?:boolean}} [options] `ignoreTemporary` is for
+   *   diagnostics only: it keeps walls and arrow rules and drops everything
+   *   that passes, crates included. `ignoreCrates` drops only the crates.
    * @returns {(Position & { dir: Direction })[]}
    */
-  neighbors(x, y, now, { ignoreTemporary = false } = {}) {
+  neighbors(x, y, now, { ignoreTemporary = false, ignoreCrates = false } = {}) {
     const result = [];
     const arrow = /** @type {Record<string, Direction>} */ ({ '↑': 'up', '↓': 'down', '←': 'left', '→': 'right' });
+    const opposite = /** @type {Record<Direction, Direction>} */ ({ up: 'down', down: 'up', left: 'right', right: 'left' });
+    /** Whether a move in `dir` goes against the arrow on the tile (tx, ty), if it has one. @param {number} tx @param {number} ty @param {Direction} dir */
+    const against = (tx, ty, dir) => {
+      const pointing = arrow[this.typeAt(tx, ty) ?? ''];
+      return pointing !== undefined && opposite[pointing] === dir;
+    };
     for (const [dir, { dx, dy }] of /** @type {[Direction, {dx: number, dy: number}][]} */ (Object.entries(DIRS))) {
-      // A directional tile may only be traversed in its arrow direction.
-      const fromArrow = arrow[this.typeAt(x, y) ?? ''];
-      if (fromArrow && fromArrow !== dir) continue;
       const nx = x + dx;
       const ny = y + dy;
+      if (against(nx, ny, dir)) continue;
+      // Crates move, so they do not count when only the lasting rules are asked for.
+      if (!ignoreTemporary && !ignoreCrates && this.#crates.has(key(nx, ny)) && !this.canPushCrate(nx, ny, dir)) continue;
       const refusedUntil = this.#failedMoves.get(`${key(x, y)},${dir}`)?.until ?? -Infinity;
-      const intoArrow = arrow[this.typeAt(nx, ny) ?? ''];
-      if (intoArrow && intoArrow !== dir) continue;
       if (this.isWalkable(nx, ny, now, { ignoreTemporary }) && (ignoreTemporary || refusedUntil <= now)) {
         result.push({ x: nx, y: ny, dir });
       }
@@ -146,14 +242,73 @@ export class GridMap {
     return result;
   }
 
-  /** @returns {Position[]} */
+  /** @returns {Position[]} the tiles where parcels are delivered for points */
   deliveryTiles() {
-    return this.#tilesOfType('2');
+    return this.doubleDelivery ? [...this.#tilesOfType('2'), ...this.#tilesOfType('9')] : this.#tilesOfType('2');
   }
 
   /** @returns {Position[]} */
   spawnTiles() {
     return this.#tilesOfType('1');
+  }
+
+  /**
+   * The delivery and spawn tiles the agent can go to and still keep playing.
+   *
+   * Arrow tiles can make one-way traps: an area that can be entered but never
+   * left. A delivery tile inside such an area can be reached once, but after
+   * delivering there the agent can never reach a parcel again. In the same
+   * way, a parcel inside a trap may be reachable while no delivery tile can be
+   * reached from it. A tile counts here only if it is part of a loop that
+   * goes on for ever: from a sustainable delivery tile the agent can reach a
+   * sustainable spawn tile, and from a sustainable spawn tile it can reach a
+   * sustainable delivery tile.
+   *
+   * Only the lasting rules are used: walls and arrows. Agents in the way and
+   * refused moves are ignored, since they pass. The result is computed once
+   * and kept until a tile changes type.
+   * @returns {{ deliveries: Set<TileKey>, spawns: Set<TileKey> }}
+   */
+  sustainableTiles() {
+    if (this.#sustainable) return this.#sustainable;
+    // For every tile, the tiles from which one move leads to it.
+    /** @type {Map<TileKey, TileKey[]>} */
+    const comingFrom = new Map();
+    for (const k of this.#types.keys()) {
+      const [x, y] = k.split(',').map(Number);
+      if (!this.isWalkable(x, y, 0, { ignoreTemporary: true })) continue;
+      for (const next of this.neighbors(x, y, 0, { ignoreTemporary: true })) {
+        const nk = key(next.x, next.y);
+        comingFrom.set(nk, [...(comingFrom.get(nk) ?? []), k]);
+      }
+    }
+    /** Every tile from which one of `targets` can be reached. @param {Set<TileKey>} targets */
+    const canReach = targets => {
+      const seen = new Set(targets);
+      const queue = [...targets];
+      for (let i = 0; i < queue.length; i++) {
+        for (const before of comingFrom.get(queue[i]) ?? []) {
+          if (!seen.has(before)) { seen.add(before); queue.push(before); }
+        }
+      }
+      return seen;
+    };
+    const keys = (/** @type {Position[]} */ tiles) => tiles.map(t => key(t.x, t.y));
+    let deliveries = new Set(keys(this.deliveryTiles()));
+    let spawns = new Set(keys(this.spawnTiles()));
+    // Drop tiles that cannot reach the other kind until nothing changes.
+    for (;;) {
+      const towardsDelivery = canReach(deliveries);
+      const nextSpawns = new Set([...spawns].filter(k => towardsDelivery.has(k)));
+      const towardsSpawn = canReach(nextSpawns);
+      const nextDeliveries = new Set([...deliveries].filter(k => towardsSpawn.has(k)));
+      const stable = nextSpawns.size === spawns.size && nextDeliveries.size === deliveries.size;
+      spawns = nextSpawns;
+      deliveries = nextDeliveries;
+      if (stable) break;
+    }
+    this.#sustainable = { deliveries, spawns };
+    return this.#sustainable;
   }
 
   /**

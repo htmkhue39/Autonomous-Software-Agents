@@ -1,6 +1,11 @@
 /**
  * Predefined goal plans: reach a tile, pick up, deliver, or explore. Navigation
  * can be PDDL-backed, but the final SDK actions remain predefined plan steps.
+ *
+ * With `deliverOnTheWay`, a plan that walks over a delivery tile while the
+ * agent carries parcels puts them down there and then carries on. The LLM
+ * agent uses this, since it has no BDI loop to notice the chance itself. The
+ * BDI agent leaves it off and gets the same effect from intention revision.
  */
 export class PlanLibrary {
   /**
@@ -9,9 +14,10 @@ export class PlanLibrary {
    * gate:import('./action-gate.js').ActionGate,
    * movement:import('./moveTo.js').MovementRunner,
    * log?:(type:string,details:object)=>void,
-   * pickupReconcileMs?:number }} setup
+   * pickupReconcileMs?:number, deliverOnTheWay?:boolean }} setup
    */
-  constructor({ beliefs, client, gate, movement, log = () => {}, pickupReconcileMs = 300 }) {
+  constructor({ beliefs, client, gate, movement, log = () => {}, pickupReconcileMs = 300, deliverOnTheWay = false }) {
+    this.deliverOnTheWay = deliverOnTheWay;
     this.beliefs = beliefs;
     this.client = client;
     this.gate = gate;
@@ -46,7 +52,8 @@ export class PlanLibrary {
       const unsubscribe = this.beliefs.onChange(() => {
         if (isCarried()) finish(true);
       });
-      timeout = setTimeout(() => finish(isCarried()), this.pickupReconcileMs);
+      // Wait for a few frames of sensing at least, however slow the server's clock is.
+      timeout = setTimeout(() => finish(isCarried()), this.beliefs.atLeastFrames(this.pickupReconcileMs, 3));
       if (isCarried()) finish(true);
     });
   }
@@ -59,7 +66,7 @@ export class PlanLibrary {
       const p = this.beliefs.parcels.get(option.parcelId, this.beliefs.now());
       return !!p && !p.carriedBy;
     }
-    if (option.type === 'deliver') return map.typeAt(option.x, option.y) === '2' && this.beliefs.parcels.carriedBy(me.id, this.beliefs.now()).length > 0;
+    if (option.type === 'deliver') return map.deliveryMultiplier(option.x, option.y) > 0 && this.beliefs.parcels.carriedBy(me.id, this.beliefs.now()).length > 0;
     return map.isWalkable(option.x, option.y, this.beliefs.now());
   }
   /** @param {import('../types.js').Option} option @param {import('../types.js').StopSignal} signal */
@@ -67,9 +74,10 @@ export class PlanLibrary {
     if (!this.applicable(option)) return { status: 'failed', reason: 'Plan not applicable' };
     const navigationStarted = performance.now();
     let navigate;
-    try { navigate = await this.movement.moveTo(option, signal); }
+    try { navigate = await this.#navigate(option, signal); }
     finally { this.log('plan_phase', { planType: option.type, phase: 'navigation',
       durationMs: Math.round(performance.now() - navigationStarted), status: navigate?.status ?? 'threw' }); }
+    if (navigate.status === 'delivered') return { status: 'completed' };
     if (navigate.status !== 'completed') return navigate;
     if (signal.stopped) return { status: 'cancelled' };
     if (option.type === 'explore' || option.type === 'goto') {
@@ -115,26 +123,87 @@ export class PlanLibrary {
     }
     if (option.type === 'deliver') {
       signal.finishing = true;
-      const before = this.beliefs.me?.score ?? null;
-      const dispatchedAt = performance.now();
-      let result;
-      try { result = await this.gate.call('putdown', () => this.client.putdown()); }
-      finally { this.log('sdk_action_phase', { action: 'putdown', durationMs: Math.round(performance.now() - dispatchedAt),
-        status: result?.status ?? 'threw' }); }
-      if (result.status !== 'ok') return { status: 'unknown', reason: result.status === 'unknown' ? result.reason : result.status };
-      const dropped = Array.isArray(result.value) ? result.value : [];
-      if (!dropped.length) return { status: 'failed', reason: 'Nothing dropped at delivery' };
-      this.beliefs.onPutdown(dropped);
-      // One entry per dropped parcel, because the LLM's progress counts
-      // deliveries by the length of this list. An entry is null when the
-      // reply did not carry that parcel's id.
-      const parcelIds = dropped.map(p => {
-        const id = p && typeof p === 'object' ? /** @type {{ id?: unknown }} */ (p).id : undefined;
-        return typeof id === 'string' ? id : null;
-      });
-      this.log('delivery', { parcelIds, beforeScore: before, x: option.x, y: option.y });
-      return { status: 'completed' };
+      return this.#putdown({ x: option.x, y: option.y }, false);
     }
     return { status: 'failed', reason: 'Unknown plan type' };
+  }
+
+  /** Standing on a delivery tile, at a whole position, while carrying parcels. */
+  #onDeliveryTileCarrying() {
+    const { me, map } = this.beliefs;
+    return !!me && !!map && this.beliefs.positionStable && map.deliveryMultiplier(me.x, me.y) > 0 &&
+      this.beliefs.parcels.carriedBy(me.id, this.beliefs.now()).length > 0;
+  }
+
+  /**
+   * Walk to the option's tile. With `deliverOnTheWay`, stop on any delivery
+   * tile reached while carrying parcels, put them down, and walk on. A
+   * delivery plan has then reached its goal, which is reported as
+   * 'delivered'.
+   * @param {import('../types.js').Option} option
+   * @param {import('../types.js').StopSignal} signal
+   * @returns {Promise<{status:'completed'|'failed'|'cancelled'|'unknown'|'delivered', reason?:string}>}
+   */
+  async #navigate(option, signal) {
+    if (!this.deliverOnTheWay) return this.movement.moveTo(option, signal);
+    // Turned off for the rest of this plan once a putdown on the way drops
+    // nothing, so that a wrong belief about carried parcels cannot loop.
+    let onTheWay = true;
+    const shouldDeliver = () => onTheWay && this.#onDeliveryTileCarrying();
+    for (;;) {
+      let deliverHere = shouldDeliver();
+      // The movement runner stops when either the caller stops the plan or
+      // a delivery tile is reached while carrying parcels.
+      const inner = { get stopped() { return signal.stopped || deliverHere; } };
+      const unsubscribe = this.beliefs.onChange(() => {
+        if (!deliverHere && shouldDeliver()) deliverHere = true;
+      });
+      let moved;
+      try { moved = deliverHere ? { status: /** @type {const} */ ('cancelled') } : await this.movement.moveTo(option, /** @type {any} */ (inner)); }
+      finally { unsubscribe(); }
+      if (!deliverHere || signal.stopped || moved.status !== 'cancelled') return moved;
+      const me = /** @type {NonNullable<typeof this.beliefs.me>} */ (this.beliefs.me);
+      // The putdown is an SDK action already sent: the caller must not
+      // reconsider until its result is known.
+      signal.finishing = true;
+      const dropped = await this.#putdown({ x: me.x, y: me.y }, true);
+      signal.finishing = false;
+      if (dropped.status === 'unknown') return dropped;
+      if (dropped.status === 'failed') { onTheWay = false; continue; }
+      if (option.type === 'deliver') return { status: 'delivered' };
+    }
+  }
+
+  /**
+   * Put down everything carried, on the tile `at` where the agent stands.
+   * @param {import('../types.js').Position} at
+   * @param {boolean} onTheWay  true when this is a delivery on the way to another goal
+   * @returns {Promise<{status:'completed'|'failed'|'unknown', reason?:string}>}
+   */
+  async #putdown(at, onTheWay) {
+    const before = this.beliefs.me?.score ?? null;
+    const dispatchedAt = performance.now();
+    let result;
+    try { result = await this.gate.call('putdown', () => this.client.putdown()); }
+    finally { this.log('sdk_action_phase', { action: 'putdown', durationMs: Math.round(performance.now() - dispatchedAt),
+      status: result?.status ?? 'threw' }); }
+    if (result.status !== 'ok') return { status: 'unknown', reason: result.status === 'unknown' ? result.reason : result.status };
+    const dropped = Array.isArray(result.value) ? result.value : [];
+    if (!dropped.length) {
+      // The server carried nothing for the agent: the belief was wrong, not the tile.
+      const forgotten = this.beliefs.onNothingCarried();
+      this.log('inventory_reconciled', { reason: 'putdown_dropped_nothing', forgotten, x: at.x, y: at.y });
+      return { status: 'failed', reason: 'Nothing dropped at delivery' };
+    }
+    this.beliefs.onPutdown(dropped);
+    // One entry per dropped parcel, because the LLM's progress counts
+    // deliveries by the length of this list. An entry is null when the
+    // reply did not carry that parcel's id.
+    const parcelIds = dropped.map(p => {
+      const id = p && typeof p === 'object' ? /** @type {{ id?: unknown }} */ (p).id : undefined;
+      return typeof id === 'string' ? id : null;
+    });
+    this.log('delivery', { parcelIds, beforeScore: before, x: at.x, y: at.y, ...(onTheWay ? { onTheWay: true } : {}) });
+    return { status: 'completed' };
   }
 }

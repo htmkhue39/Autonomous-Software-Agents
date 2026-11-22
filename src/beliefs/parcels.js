@@ -1,4 +1,5 @@
 import { key } from './map.js';
+import { decayTicks } from '../deliberation/utility.js';
 
 /**
  * @typedef {import('../types.js').ClockEvent} ClockEvent
@@ -7,23 +8,44 @@ import { key } from './map.js';
  * @typedef {import('../types.js').TileKey} TileKey
  */
 
-/** @type {Record<string, number>} */
-const UNIT_MS = { s: 1000, m: 60_000, h: 3_600_000 };
+/**
+ * The clock events the course server fires, each checked only when the one
+ * before it fires (backend/src/core/Clock.js), with the time it waits for.
+ */
+const NESTED_EVENTS = /** @type {const} */ ([['1s', 1000], ['2s', 2000], ['5s', 5000], ['10s', 10_000], ['1m', 60_000], ['1h', 3_600_000]]);
 
 /**
- * Milliseconds between two clock events, `Infinity` for 'infinite'.
- * @param {ClockEvent} event
- * @param {number} [clockMs]  milliseconds per frame (the server's CLOCK), for 'frame'
+ * Milliseconds between two firings of a clock event, as the course server's
+ * clock fires them, or `Infinity` for an event that never fires.
+ *
+ * The names do not always say the time. The server's clock advances one
+ * frame of `clockMs` at a time and fires '1s' on the first frame at least
+ * 1000 ms after the last time it fired, so with frames of 300 ms '1s' comes
+ * every 1200 ms. Each longer event is checked only when the one before it
+ * fires: '2s' at a '1s', '5s' at a '2s', and so on. So '5s' comes on the
+ * first '2s' at least 5000 ms after the last, which is every 6000 ms, and
+ * '10s' every 12000 ms. Since every event first fires a whole period after
+ * the clock starts, it fires at whole multiples of its period of game time.
+ *
+ * 'infinite' never fires. Neither does any other name: a game loaded from a
+ * file gets such a name replaced by '1s', but one set through the server's
+ * configuration API keeps it, and the clock never fires it. The agent sees
+ * the name the game kept.
+ * @param {string} event
+ * @param {number} [clockMs]  milliseconds per frame (the server's CLOCK);
+ *   left out, frames are taken as too short to matter
  */
 export function decayIntervalMs(event, clockMs) {
-  if (event === 'infinite') return Infinity;
   if (event === 'frame') {
     if (clockMs === undefined) throw new Error("A 'frame' clock event needs the server's CLOCK");
     return clockMs;
   }
-  const match = /^(\d+)([smh])$/.exec(event);
-  if (!match) throw new Error(`Unknown clock event: ${event}`);
-  return Number(match[1]) * UNIT_MS[match[2]];
+  let period = clockMs !== undefined && clockMs > 0 ? clockMs : 1;
+  for (const [name, waitMs] of NESTED_EVENTS) {
+    period = Math.ceil(waitMs / period) * period;
+    if (name === event) return period;
+  }
+  return Infinity;
 }
 
 /**
@@ -175,6 +197,22 @@ export class ParcelBeliefs {
     }
   }
 
+  /**
+   * The server says `agentId` carries nothing: forget every parcel believed
+   * carried by it.
+   * @param {string} agentId
+   * @returns {number} how many were forgotten
+   */
+  forgetCarriedBy(agentId) {
+    let count = 0;
+    for (const [id, entry] of this.#known) {
+      if (entry.parcel.carriedBy !== agentId) continue;
+      this.#known.delete(id);
+      count++;
+    }
+    return count;
+  }
+
   /** @param {Position} at */
   #freeAt({ x, y }) {
     return [...this.#known.values()].filter(({ parcel }) =>
@@ -191,7 +229,8 @@ export class ParcelBeliefs {
   get(id, now) {
     const entry = this.#known.get(id);
     if (!entry) return undefined;
-    const reward = entry.parcel.reward - Math.floor((now - entry.seenAt) / this.decayMs);
+    // Every parcel loses a point at the same decay ticks of the game clock.
+    const reward = entry.parcel.reward - decayTicks(entry.seenAt, now, this.decayMs);
     if (reward <= 0) {
       this.#known.delete(id);
       return undefined;

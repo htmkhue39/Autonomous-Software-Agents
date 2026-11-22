@@ -1,4 +1,4 @@
-import { findPath } from '../planning/astar.js';
+import { findPath, findPushingPath, stepWithCrates } from '../planning/astar.js';
 import { solveNavigation } from '../planning/pddl/solve.js';
 import { DIRS, key } from '../beliefs/map.js';
 
@@ -6,6 +6,13 @@ const sleep = (/** @type {number} */ ms) => new Promise(resolve => setTimeout(re
 
 /** An action executor that supports cancellation between moves, rejects
  * overlapping actions, and preserves UNKNOWN results without blind retries.
+ *
+ * The first route of each call comes from the configured planner, so in
+ * 'pddl' mode the external planner runs when an intention is activated.
+ * After that, the route is checked again before every move with A*, which
+ * takes about a millisecond. The agent switches to a new A* route at once
+ * when a tile on the rest of its route becomes blocked or occupied, or when
+ * a strictly shorter route has opened up. Each switch is logged as 'replan'.
  */
 export class MovementRunner {
   /**
@@ -13,11 +20,13 @@ export class MovementRunner {
    * gate: import('./action-gate.js').ActionGate, mode?: 'astar'|'pddl',
    * solve?: typeof import('../planning/pddl/solve.js').courseSolver,
    * pddlTimeoutMs?: number, maxMoveRetries?: number,
-   * congestionTimeoutMs?:number, congestionRetryMs?:number,
+   * congestionTimeoutMs?:number, congestionRetryMs?:number, yieldAfterWaits?:number,
    * log?: (type:string,details:object)=>void }} config
+   *   `yieldAfterWaits` is how many waits for a blocking agent pass before
+   *   the agent steps aside to let it through (see stepAside).
    */
   constructor({ beliefs, client, gate, mode = 'pddl', solve, pddlTimeoutMs = 5000, maxMoveRetries = 3,
-    congestionTimeoutMs = 3500, congestionRetryMs = 180, log = () => {} }) {
+    congestionTimeoutMs = 3500, congestionRetryMs = 180, yieldAfterWaits = 3, log = () => {} }) {
     this.beliefs = beliefs;
     this.client = client;
     this.gate = gate;
@@ -27,6 +36,7 @@ export class MovementRunner {
     this.maxMoveRetries = maxMoveRetries;
     this.congestionTimeoutMs = Math.max(0, congestionTimeoutMs);
     this.congestionRetryMs = Math.max(20, congestionRetryMs);
+    this.yieldAfterWaits = Math.max(1, yieldAfterWaits);
     this.log = log;
   }
 
@@ -38,10 +48,15 @@ export class MovementRunner {
   async moveTo(target, signal) {
     /** @type {import('../types.js').Direction[] | null} */
     let planned = null;
+    // The external planner is asked once per call, for the first route.
+    let plannerCalled = false;
     let retries = 0;
     let movesCompleted = 0;
     /** @type {number|null} */ let congestionStarted = null;
     let congestionWaits = 0;
+    // Whether the agent already stepped aside in the current wait.
+    let yielded = false;
+    let yielding = false;
     const cancelled = () => {
       this.log('navigation_cancelled', { target, movesCompleted });
       return { status: /** @type {const} */ ('cancelled') };
@@ -56,13 +71,28 @@ export class MovementRunner {
       if (me.x === target.x && me.y === target.y) return { status: 'completed' };
       const now = this.beliefs.now();
       const paths = { now, occupied: this.beliefs.agents.occupied(now) };
-      const nextDirection = planned?.[0];
-      if (!nextDirection || !map.neighbors(me.x, me.y, now).some(n => n.dir === nextDirection && !paths.occupied.has(key(n.x, n.y)))) {
+      if (planned?.length) {
+        // Check the rest of the route against the latest beliefs. A blocked
+        // route is replaced by the best one there is, pushing crates if need
+        // be; a route that still works only by a shorter one without pushes.
+        /** @type {boolean} */
+        const blocked = !followable(map, me, planned, paths);
+        /** @type {import('../types.js').Direction[] | null} */
+        const fresh = blocked ? workingRoute(map, me, target, paths) : simpleRoute(map, me, target, paths);
+        const reason = blocked ? 'blocked' : fresh && fresh.length < planned.length ? 'shorter' : null;
+        if (reason) {
+          this.log('replan', { reason, planner: 'astar', from: { x: me.x, y: me.y }, target,
+            previousMoves: planned.length, moves: fresh?.length ?? null });
+          planned = fresh;
+        }
+      } else if (this.mode === 'pddl' && !plannerCalled) {
         // Do not spend seconds calling an external solver when A* can already
         // prove there is no route with the current occupied tiles. If a route
         // exists, PDDL still performs the actual planning as required.
-        if (this.mode === 'pddl' && findPath(map, me, target, paths) === null) planned = null;
-        else planned = await this.route(me, target, paths);
+        if (findPath(map, me, target, paths) === null) planned = null;
+        else { plannerCalled = true; planned = await this.route(me, target, paths); }
+      } else {
+        planned = workingRoute(map, me, target, paths);
       }
       if (signal.stopped) return cancelled();
       if (!planned?.length) {
@@ -84,32 +114,49 @@ export class MovementRunner {
           this.log('navigation_failed', { reason: 'Static route impossible', ...diagnostic, failureKind: 'static' });
           return { status: 'failed', reason: 'Static route impossible' };
         }
-        if (relevant.length && this.congestionTimeoutMs > 0) {
+        // Waits are measured in milliseconds, but never shorter than some moves of this game.
+        const congestionTimeoutMs = this.congestionTimeoutMs > 0 ? this.beliefs.atLeastMoves(this.congestionTimeoutMs, 10) : 0;
+        const congestionRetryMs = this.beliefs.atLeastMoves(this.congestionRetryMs, 1);
+        if (relevant.length && congestionTimeoutMs > 0) {
           congestionStarted ??= Date.now();
           const waitedMs = Date.now() - congestionStarted;
-          if (waitedMs >= this.congestionTimeoutMs) {
+          if (waitedMs >= congestionTimeoutMs) {
             this.log('navigation_failed', { reason: 'Congestion timeout', ...diagnostic,
               failureKind: 'congestion', waitedMs, attempts: congestionWaits });
             return { status: 'failed', reason: 'Congestion timeout' };
           }
           congestionWaits++;
           if (congestionWaits === 1) this.log('navigation_wait', { ...diagnostic, reason: 'Agent occupying static route' });
-          await sleep(Math.min(this.congestionRetryMs, this.congestionTimeoutMs - waitedMs));
+          const aside = yielded ? null : stepAside(map, me, staticTiles, paths, relevant, congestionWaits, this.yieldAfterWaits);
+          if (aside) {
+            // Make way: step off the route the blocking agent needs, then plan again from there.
+            yielded = true;
+            yielding = true;
+            this.log('navigation_yield', { ...diagnostic, direction: aside });
+            planned = [aside];
+          } else {
+            await sleep(Math.min(congestionRetryMs, congestionTimeoutMs - waitedMs));
+            continue;
+          }
+        } else {
+          congestionStarted = null;
+          if (++retries > this.maxMoveRetries) {
+            this.log('navigation_failed', { reason: 'No currently usable route', ...diagnostic,
+              failureKind: 'temporary_edge_or_other', attempts: retries });
+            return { status: 'failed', reason: 'No currently usable route' };
+          }
+          await sleep(this.beliefs.atLeastMoves(120, 1));
           continue;
         }
-        congestionStarted = null;
-        if (++retries > this.maxMoveRetries) {
-          this.log('navigation_failed', { reason: 'No currently usable route', ...diagnostic,
-            failureKind: 'temporary_edge_or_other', attempts: retries });
-          return { status: 'failed', reason: 'No currently usable route' };
-        }
-        await sleep(120);
-        continue;
       }
-      if (congestionStarted !== null) {
+      if (yielding) {
+        // The wait goes on after stepping aside: its time still counts.
+        yielding = false;
+      } else if (congestionStarted !== null) {
         this.log('navigation_recovered', { target, waitedMs: Date.now() - congestionStarted, waits: congestionWaits });
         congestionStarted = null;
         congestionWaits = 0;
+        yielded = false;
       }
       const dir = planned.shift();
       if (!dir) continue;
@@ -131,7 +178,7 @@ export class MovementRunner {
           return { status: 'failed', reason: 'Too many refused moves' };
         }
         planned = null;
-        await sleep(80);
+        await sleep(this.beliefs.atLeastMoves(80, 1));
         continue;
       }
       const pos = response.value;
@@ -142,6 +189,7 @@ export class MovementRunner {
         this.log('action_unknown', { action: 'move', direction: dir, reason: 'Unexpected move acknowledgement', received: pos });
         return { status: 'unknown', reason: 'Move result requires sensing reconciliation' };
       }
+      map.cratePushed(pos.x, pos.y, dir);
       this.beliefs.onYou({ ...me, ...pos });
       map.moveSucceeded(origin.x, origin.y, dir);
       map.markSeen([pos], this.beliefs.now());
@@ -174,4 +222,79 @@ export class MovementRunner {
     if (!map) return null;
     return findPath(map, from, to, options);
   }
+}
+
+/**
+ * A shortest route without pushing any crate, or null.
+ * @param {import('../beliefs/map.js').GridMap} map
+ * @param {import('../types.js').Position} from
+ * @param {import('../types.js').Position} to
+ * @param {import('../types.js').PathOptions} paths
+ */
+function simpleRoute(map, from, to, paths) {
+  const route = findPath(map, from, to, paths);
+  return route && followable(map, from, route, paths) ? route : null;
+}
+
+/**
+ * A route the server will let the agent follow, or null. The plain search
+ * treats crates as standing still, which is right unless its route pushes
+ * the same crate twice or into another crate; then a search that follows the
+ * crates is asked instead (findPushingPath), which takes longer.
+ * @param {import('../beliefs/map.js').GridMap} map
+ * @param {import('../types.js').Position} from
+ * @param {import('../types.js').Position} to
+ * @param {import('../types.js').PathOptions} paths
+ */
+function workingRoute(map, from, to, paths) {
+  const route = findPath(map, from, to, paths);
+  if (map.crateTiles().size === 0) return route;
+  if (route && followable(map, from, route, paths)) return route;
+  return findPushingPath(map, from, to, paths);
+}
+
+/**
+ * Whether every move of `route`, taken from `from`, is still allowed by the
+ * map and enters no tile that another agent occupies. Crates pushed by the
+ * route are followed along it, so a route that pushes a crate out of the way
+ * stays followable after the push.
+ * @param {import('../beliefs/map.js').GridMap} map
+ * @param {import('../types.js').Position} from
+ * @param {import('../types.js').Direction[]} route
+ * @param {import('../types.js').PathOptions} paths
+ */
+function followable(map, from, route, paths) {
+  /** @type {{ x: number, y: number, crates: ReadonlySet<string> }} */
+  let at = { x: from.x, y: from.y, crates: map.crateTiles() };
+  for (const dir of route) {
+    const next = stepWithCrates(map, at, dir, at.crates, paths);
+    if (!next) return false;
+    at = next;
+  }
+  return true;
+}
+
+/**
+ * Where to step aside so that a blocking agent can pass, or null to keep
+ * waiting. In a narrow passage two agents heading towards each other can
+ * block each other until one gives up; stepping onto a side tile that the
+ * agent's own route does not use clears the way. The agent only does this
+ * after `afterWaits` waits, and only when a blocking agent is at most two
+ * tiles away, since a blocker further off may still turn away by itself.
+ * @param {import('../beliefs/map.js').GridMap} map
+ * @param {import('../types.js').Position} me
+ * @param {Set<string>} routeTiles  the tiles of the agent's route without the other agents
+ * @param {import('../types.js').PathOptions} paths
+ * @param {{ tiles: import('../types.js').Position[] }[]} blockers  agents on that route
+ * @param {number} waits
+ * @param {number} afterWaits
+ * @returns {import('../types.js').Direction | null}
+ */
+export function stepAside(map, me, routeTiles, paths, blockers, waits, afterWaits) {
+  if (waits < afterWaits) return null;
+  const near = blockers.some(b => b.tiles.some(t => Math.abs(t.x - me.x) + Math.abs(t.y - me.y) <= 2));
+  if (!near) return null;
+  const side = map.neighbors(me.x, me.y, paths.now)
+    .find(n => !routeTiles.has(key(n.x, n.y)) && !paths.occupied?.has(key(n.x, n.y)));
+  return side?.dir ?? null;
 }

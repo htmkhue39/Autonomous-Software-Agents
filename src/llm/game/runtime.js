@@ -34,10 +34,10 @@ export function createGameRuntime({ beliefs, client, provider, mode = 'native', 
     progress.record(event, details);
     log(event, details);
   };
-  const gate = new ActionGate({ timeoutMs: actionTimeoutMs });
+  const gate = new ActionGate({ timeoutMs: actionTimeoutMs, minimumMs: () => beliefs.atLeastMoves(0, 4) });
   const movement = new MovementRunner({ beliefs, client, gate, mode: mover, pddlTimeoutMs, maxMoveRetries,
     congestionTimeoutMs, congestionRetryMs, log: write });
-  const plans = new PlanLibrary({ beliefs, client, gate, movement, log: write });
+  const plans = new PlanLibrary({ beliefs, client, gate, movement, log: write, deliverOnTheWay: true });
   const memory = new WorkingMemory({ maxEvents: 14, maxTextLength: 5500, observationTtlMs: 30_000 });
   const cooldowns = new Map();
   /** @type {ReturnType<typeof parseGameObjective>} */

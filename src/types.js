@@ -28,8 +28,9 @@
 
 /**
  * '0' wall, '1' parcel spawner, '2' delivery, '3' walkable, '4' base,
- * '5' crate sliding tile, '5!' crate spawner, arrows are directional tiles.
- * @typedef {'0' | '1' | '2' | '3' | '4' | '5' | '5!' | '←' | '↑' | '→' | '↓'} TileType
+ * '5' crate sliding tile, '5!' crate spawner, '6' battery spawner, '7' door,
+ * '8' key spawner, '9' double delivery, arrows are directional tiles.
+ * @typedef {'0' | '1' | '2' | '3' | '4' | '5' | '5!' | '6' | '7' | '8' | '9' | '←' | '↑' | '→' | '↓'} TileType
  */
 
 /**
@@ -128,6 +129,7 @@
  * @property {ParcelRules} parcels
  * @property {PlayerRules} player
  * @property {EnergyRules} [energy]
+ * @property {string[]} [plugins]  ids of the plugins the game runs, such as 'double-delivery'
  */
 
 /**
@@ -160,6 +162,10 @@
  * @property {number} [congestionRetryMs]
  * @property {number} pddlTimeoutMs
  * @property {number} actionTimeoutMs
+ * @property {'baseline' | 'net_gain'} optionStrategy  how pickups are weighed against delivering
+ * @property {number} minNetGain  with net_gain, the fewest extra points a switch of goal must earn
+ * @property {number | null} timeValuePerS  with net_gain, points one second is worth; null learns it from the score
+ * @property {number} deliveryProtection  with net_gain, the gain above which a pickup gives way to delivering
  */
 
 /**
@@ -183,16 +189,18 @@
  */
 
 /**
- * Something the agent could commit to, produced by deliberation.
- * `priority` 1 marks a user goal, which outranks any autonomous option.
+ * Something the agent could commit to, produced by deliberation. A higher
+ * `priority` always outranks a lower one, whatever the utilities: 1 marks a
+ * user goal or delivering on the tile the agent stands on, and -1 marks
+ * exploring under the net_gain strategy.
  * @typedef {Object} Option
  * @property {string} id          short name that stays the same while the option does,
- *                                e.g. 'pickup:p1', 'deliver', 'explore:4,0'
+ *                                e.g. 'pickup:p1', 'deliver:0,3', 'explore:4,0'
  * @property {'pickup' | 'deliver' | 'explore' | 'goto'} type
  * @property {number} x
  * @property {number} y
- * @property {number} utility     expected reward on delivery
- * @property {0 | 1} priority
+ * @property {number} utility     expected reward on delivery; under net_gain, minus the value of the time taken
+ * @property {-1 | 0 | 1} priority
  * @property {string} [parcelId]  for 'pickup'
  */
 
@@ -208,6 +216,7 @@
  * @property {Set<TileKey>} [occupied]                       tiles held by other agents
  * @property {(x: number, y: number) => boolean} [forbidden] tiles ruled out by directives
  * @property {boolean} [ignoreTemporary] diagnostics only; ignore transient blocks/refusals (NEVER for execution)
+ * @property {boolean} [ignoreCrates] treat crates as absent, for optimistic distances
  */
 
 export {};

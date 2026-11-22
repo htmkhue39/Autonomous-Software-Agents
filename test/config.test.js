@@ -7,7 +7,7 @@ test('with an empty environment every setting has its default', () => {
     host: 'http://localhost:8080',
     token: undefined,
     name: 'bubble',
-    mover: 'astar',
+    mover: 'pddl',
     replaceMargin: 1.2,
     minCommitMs: 6000,
     failedGoalCooldownMs: 10_000,
@@ -19,6 +19,10 @@ test('with an empty environment every setting has its default', () => {
     congestionRetryMs: 180,
     pddlTimeoutMs: 5000,
     actionTimeoutMs: 8000,
+    optionStrategy: 'net_gain',
+    minNetGain: 1,
+    timeValuePerS: null,
+    deliveryProtection: 0,
   });
 });
 
@@ -32,9 +36,32 @@ test('an empty token counts as no token', () => {
   assert.equal(loadConfig({ TOKEN_BUBBLE: '' }).token, undefined);
 });
 
-test('MOVER is pddl only when set to pddl', () => {
+test('MOVER is pddl unless it is set to astar', () => {
   assert.equal(loadConfig({ MOVER: 'pddl' }).mover, 'pddl');
-  assert.equal(loadConfig({ MOVER: 'other' }).mover, 'astar');
+  assert.equal(loadConfig({ MOVER: 'other' }).mover, 'pddl');
+  assert.equal(loadConfig({ MOVER: 'astar' }).mover, 'astar');
+});
+
+test('OPTION_STRATEGY and MIN_NET_GAIN are read and checked', () => {
+  assert.equal(loadConfig({ OPTION_STRATEGY: 'baseline' }).optionStrategy, 'baseline');
+  assert.equal(loadConfig({ OPTION_STRATEGY: 'net_gain' }).optionStrategy, 'net_gain');
+  assert.throws(() => loadConfig({ OPTION_STRATEGY: 'greedy' }), /OPTION_STRATEGY/);
+  assert.equal(loadConfig({ MIN_NET_GAIN: '2' }).minNetGain, 2);
+  assert.throws(() => loadConfig({ MIN_NET_GAIN: '0' }), /MIN_NET_GAIN/);
+});
+
+test('DELIVERY_PROTECTION is a number of 0 or more', () => {
+  assert.equal(loadConfig({ DELIVERY_PROTECTION: '0.5' }).deliveryProtection, 0.5);
+  assert.throws(() => loadConfig({ DELIVERY_PROTECTION: '-1' }), /DELIVERY_PROTECTION/);
+});
+
+test('TIME_VALUE is learned unless a fixed value is given', () => {
+  assert.equal(loadConfig({}).timeValuePerS, null);
+  assert.equal(loadConfig({ TIME_VALUE: 'auto' }).timeValuePerS, null);
+  assert.equal(loadConfig({ TIME_VALUE: '0' }).timeValuePerS, 0);
+  assert.equal(loadConfig({ TIME_VALUE: '12.5' }).timeValuePerS, 12.5);
+  assert.throws(() => loadConfig({ TIME_VALUE: '-1' }), /TIME_VALUE/);
+  assert.throws(() => loadConfig({ TIME_VALUE: 'fast' }), /TIME_VALUE/);
 });
 
 test('tuning constants can be overridden from the environment', () => {

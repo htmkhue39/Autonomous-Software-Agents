@@ -62,7 +62,7 @@ const deliveryEvacuationSetting = process.env.LLM_DELIVERY_EVACUATION ?? (coordi
 if (!['true', 'false'].includes(deliveryEvacuationSetting)) throw new Error('LLM_DELIVERY_EVACUATION must be true or false');
 const deliveryEvacuation = deliveryEvacuationSetting === 'true';
 const runtime = createGameRuntime({ beliefs, client, provider, mode,
-  mover: process.env.MOVER === 'pddl' ? 'pddl' : 'astar',
+  mover: config.mover,
   maxSteps: integerEnv('LLM_MAX_STEPS', 18), maxToolCalls: integerEnv('LLM_MAX_TOOL_CALLS', 20),
   toolTimeoutMs: integerEnv('LLM_TOOL_TIMEOUT_MS', 60_000),
   actionTimeoutMs: config.actionTimeoutMs, maxMoveRetries: config.maxMoveRetries,
@@ -79,7 +79,7 @@ client.socket.on('disconnect', (/** @type {string} */ reason) => {
 client.socket.on('token', (/** @type {string} */ token) => {
   log('token_issued', { tokenReceived: !!token, note: 'Create/save TOKEN_MILKTEA locally; the JWT is deliberately never logged' });
 });
-log('llm_game_startup', { host: config.host, agent: 'milktea', mode, llmProvider: llmProviderName, mover: process.env.MOVER === 'pddl' ? 'pddl' : 'astar', objective, deliveryEvacuation });
+log('llm_game_startup', { host: config.host, agent: 'milktea', mode, llmProvider: llmProviderName, mover: config.mover, objective, deliveryEvacuation });
 try {
   await waitForGameReady(beliefs, { timeoutMs: integerEnv('GAME_READY_TIMEOUT_MS', 20_000), signal: abort.signal });
   log('llm_game_ready', { x: beliefs.me?.x, y: beliefs.me?.y, score: beliefs.me?.score, level: beliefs.config?.GAME.title });

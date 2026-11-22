@@ -36,10 +36,44 @@ export class Beliefs {
    */
   constructor({ now = Date.now, agentTtlMs, blockedTtlMs, maxBlockedMs }) {
     this.clock = new GameClock(now);
+    this.agentTtlMs = agentTtlMs;
     this.blockedTtlMs = blockedTtlMs;
     this.maxBlockedMs = maxBlockedMs;
     this.parcels = new ParcelBeliefs(Infinity);
     this.agents = new AgentBeliefs(agentTtlMs);
+  }
+
+  /**
+   * `ms`, but never less than `moves` moves of the current game. The game's
+   * settings can be changed by hand, and a wait that is long enough at 50 ms
+   * per move may not cover a single move in a slower game. So every wait that
+   * is about agents moving is set in milliseconds, with this as its floor.
+   * @param {number} ms
+   * @param {number} moves
+   */
+  atLeastMoves(ms, moves) {
+    const moveMs = this.config?.GAME.player.movement_duration;
+    return typeof moveMs === 'number' && moveMs > 0 ? Math.max(ms, moves * moveMs) : ms;
+  }
+
+  /**
+   * `ms`, but never less than `frames` frames of the server's clock, for
+   * waits on the next sensing message.
+   * @param {number} ms
+   * @param {number} frames
+   */
+  atLeastFrames(ms, frames) {
+    const frameMs = this.config?.CLOCK;
+    return typeof frameMs === 'number' && frameMs > 0 ? Math.max(ms, frames * frameMs) : ms;
+  }
+
+  /** Set how long sightings and refused moves count, from the game's speed. */
+  #applyTimings() {
+    this.agents.ttlMs = this.atLeastMoves(this.agentTtlMs, 6);
+    if (this.map) {
+      this.map.blockedTtlMs = this.atLeastMoves(this.blockedTtlMs, 4);
+      this.map.maxBlockedMs = this.atLeastMoves(this.maxBlockedMs ?? 30_000, 60);
+    }
   }
 
   /** The server's game time, in milliseconds. */
@@ -78,6 +112,8 @@ export class Beliefs {
     this.config = config;
     this.clock.setFrameMs(config.CLOCK);
     this.parcels.decayMs = decayIntervalMs(config.GAME.parcels.decaying_event, config.CLOCK);
+    if (this.map) this.map.doubleDelivery = this.#doubleDelivery();
+    this.#applyTimings();
     this.#changed();
   }
 
@@ -91,6 +127,8 @@ export class Beliefs {
     const width = Math.max(...tiles.map(t => t.x)) + 1;
     const height = Math.max(...tiles.map(t => t.y)) + 1;
     this.map = new GridMap(width, height, tiles, { blockedTtlMs: this.blockedTtlMs, maxBlockedMs: this.maxBlockedMs });
+    this.map.doubleDelivery = this.#doubleDelivery();
+    this.#applyTimings();
     this.#changed();
   }
 
@@ -113,8 +151,10 @@ export class Beliefs {
     const now = this.now();
     const myId = self?.id ?? this.me?.id;
     this.map?.markSeen(positions, now);
-    for (const { x, y } of crates) this.map?.block(x, y, now + this.blockedTtlMs);
+    this.map?.updateCrates(crates ?? [], positions);
     this.parcels.update(parcels, positions, now, myId);
+    // An agent seen carrying a parcel collects parcels, so it competes for them.
+    for (const { carriedBy } of parcels) if (carriedBy && carriedBy !== myId) this.agents.markCollector(carriedBy);
     this.agents.update(agents.filter(a => a.id !== myId), positions, now);
     this.#changed();
   }
@@ -158,8 +198,21 @@ export class Beliefs {
   onPutdown(dropped) {
     if (!this.me || dropped.length === 0) return;
     const { x, y } = this.me;
-    this.parcels.putDownAll(this.me.id, { x, y }, { delivered: this.map?.typeAt(x, y) === '2' });
+    this.parcels.putDownAll(this.me.id, { x, y }, { delivered: (this.map?.deliveryMultiplier(x, y) ?? 0) > 0 });
     this.#changed();
+  }
+
+  /**
+   * A putdown dropped nothing, so the server says the agent carries nothing.
+   * Sensing never corrects this belief, because the agent's own load is
+   * tracked from its pickups and putdowns, so it is corrected here.
+   * @returns {number} how many believed parcels were forgotten
+   */
+  onNothingCarried() {
+    if (!this.me) return 0;
+    const count = this.parcels.forgetCarriedBy(this.me.id);
+    if (count) this.#changed();
+    return count;
   }
 
   /** @param {import('../types.js').Parcel[]} parcels @param {number} observedAt */
@@ -173,6 +226,11 @@ export class Beliefs {
   onPeerCollected(id) {
     if (this.me && this.parcels.get(id, this.now())?.carriedBy === this.me.id) return;
     if (this.parcels.forget(id)) this.#changed();
+  }
+
+  /** Whether the game runs the plugin that scores '9' tiles twice. */
+  #doubleDelivery() {
+    return this.config?.GAME.plugins?.includes('double-delivery') ?? false;
   }
 
   #changed() {

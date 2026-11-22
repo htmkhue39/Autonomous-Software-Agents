@@ -26,6 +26,8 @@ import { key } from './map.js';
 export class AgentBeliefs {
   /** @type {Map<string, SeenAgent>} */
   #seen = new Map();
+  /** @type {Set<string>} agents seen carrying a parcel at least once */
+  #collectors = new Set();
 
   /** @param {number} ttlMs  how long a sighting blocks its tile */
   constructor(ttlMs) {
@@ -54,6 +56,27 @@ export class AgentBeliefs {
   /** @param {string} id */
   get(id) {
     return this.#seen.get(id);
+  }
+
+  /**
+   * The agent `id` was seen carrying a parcel, so it collects parcels and
+   * competes for them. Agents that never carry anything, such as NPCs that
+   * only walk around, are left out.
+   * @param {string} id
+   */
+  markCollector(id) {
+    this.#collectors.add(id);
+  }
+
+  /**
+   * Where the agents known to collect parcels were seen within the last `ttlMs`.
+   * @param {number} now
+   * @returns {Position[]}
+   */
+  rivals(now) {
+    return [...this.#seen.values()]
+      .filter(a => this.#collectors.has(a.id) && now - a.seenAt <= this.ttlMs)
+      .map(({ x, y }) => ({ x, y }));
   }
 
   /**

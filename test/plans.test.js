@@ -2,6 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { stage1World } from './stage1-helpers.js';
+import { PlanLibrary } from '../src/plans/library.js';
 
 test('predefined pickup and delivery plans execute and revise beliefs', async () => {
   const { beliefs, plans, events } = stage1World();
@@ -75,4 +76,108 @@ test('ambiguous move result is not retried by movement runner', async () => {
   const result = await w.movement.moveTo({ x: 1, y: 0 }, { stopped: false });
   assert.equal(result.status, 'unknown');
   assert.equal(w.beliefs.me.x, 3);
+});
+
+test('with deliverOnTheWay a pickup plan delivers on a delivery tile it crosses', async () => {
+  // Agent at x 4 carries 'c'; parcel 'p' lies at x 1, past the delivery tile at x 2.
+  const w = stage1World({ rows: ['33233'], x: 4 });
+  w.send([{ id: 'p', x: 1, y: 0, reward: 20, carriedBy: null }, { id: 'c', x: 4, y: 0, reward: 20, carriedBy: 'me' }]);
+  const logged = [];
+  const plans = new PlanLibrary({ beliefs: w.beliefs, client: w.client, gate: w.gate, movement: w.movement,
+    log: (type, details) => logged.push({ type, ...details }), deliverOnTheWay: true });
+  const result = await plans.execute({ id: 'pickup:p', type: 'pickup', x: 1, y: 0, parcelId: 'p' }, { stopped: false });
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(w.events.map(e => e.action), ['move', 'move', 'putdown', 'move', 'pickup']);
+  assert.deepEqual(logged.find(e => e.type === 'delivery'), { type: 'delivery', parcelIds: ['c'], beforeScore: 0, x: 2, y: 0, onTheWay: true });
+  assert.deepEqual(w.beliefs.parcels.carriedBy('me', w.beliefs.now()).map(p => p.id), ['p']);
+});
+
+test('with deliverOnTheWay a delivery plan ends at the first delivery tile it reaches', async () => {
+  const w = stage1World({ rows: ['2323'], x: 3 });
+  w.send([{ id: 'c', x: 3, y: 0, reward: 20, carriedBy: 'me' }], [{ x: 1, y: 0 }]);
+  const plans = new PlanLibrary({ beliefs: w.beliefs, client: w.client, gate: w.gate, movement: w.movement, deliverOnTheWay: true });
+  const result = await plans.execute({ id: 'deliver:0,0', type: 'deliver', x: 0, y: 0 }, { stopped: false });
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(w.events.map(e => e.action), ['move', 'putdown']);
+  assert.equal(w.beliefs.me.x, 2);
+});
+
+test('with deliverOnTheWay an empty putdown on the way does not stop the plan', async () => {
+  const w = stage1World({ rows: ['33233'], x: 4 });
+  w.send([{ id: 'p', x: 1, y: 0, reward: 20, carriedBy: null }, { id: 'c', x: 4, y: 0, reward: 20, carriedBy: 'me' }]);
+  w.client.putdown = async () => { w.events.push({ action: 'putdown' }); return []; };
+  const plans = new PlanLibrary({ beliefs: w.beliefs, client: w.client, gate: w.gate, movement: w.movement, deliverOnTheWay: true });
+  const result = await plans.execute({ id: 'pickup:p', type: 'pickup', x: 1, y: 0, parcelId: 'p' }, { stopped: false });
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(w.events.map(e => e.action), ['move', 'move', 'putdown', 'move', 'pickup']);
+});
+
+test('without deliverOnTheWay a pickup plan walks over delivery tiles', async () => {
+  const w = stage1World({ rows: ['33233'], x: 4 });
+  w.send([{ id: 'p', x: 1, y: 0, reward: 20, carriedBy: null }, { id: 'c', x: 4, y: 0, reward: 20, carriedBy: 'me' }]);
+  const result = await w.plans.execute({ id: 'pickup:p', type: 'pickup', x: 1, y: 0, parcelId: 'p' }, { stopped: false });
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(w.events.map(e => e.action), ['move', 'move', 'move', 'pickup']);
+});
+
+/** Report another agent standing on (x, y), or none when `at` is null. */
+function otherAgent(w, at) {
+  const agents = at ? [{ id: 'o', name: 'other', x: at.x, y: at.y, score: 0 }] : [];
+  // With no agent reported and its tile in view, the agent is forgotten.
+  w.beliefs.onSensing({ positions: [{ x: 2, y: 0 }, { x: 1, y: 0 }], agents, parcels: [], crates: [] });
+}
+
+test('the route is replanned as soon as an agent blocks it further ahead', async () => {
+  // Agent at (4, 0) walks left to (0, 0). After its first move another agent
+  // appears at (1, 0), two tiles ahead: the agent must turn off at once
+  // rather than walk up to it.
+  const logged = [];
+  const w = stage1World({ rows: ['33333', '33333'], x: 4, log: (type, details) => logged.push({ type, ...details }) });
+  w.send([], [{ x: 1, y: 0 }]);
+  const move = w.client.move;
+  let moves = 0;
+  w.client.move = async dir => { const result = await move(dir); if (++moves === 1) otherAgent(w, { x: 1, y: 0 }); return result; };
+  const result = await w.movement.moveTo({ x: 0, y: 0 }, { stopped: false });
+  assert.equal(result.status, 'completed');
+  const replan = logged.find(e => e.type === 'replan');
+  assert.deepEqual([replan?.reason, replan?.planner, replan?.from], ['blocked', 'astar', { x: 3, y: 0 }]);
+  assert.equal(logged.some(e => e.type === 'move' && e.x === 1 && e.y === 0), false);
+});
+
+test('the route is shortened as soon as a blocking agent moves away', async () => {
+  // y 2:  3 3 3 3 3
+  // y 1:  3 0 0 0 3
+  // y 0:  3 3 3 3 3   agent at (4, 0), goal (0, 0), another agent at (2, 0)
+  // The first route goes over the top, 8 moves. After the first move the
+  // other agent is gone, and going back along the bottom row is shorter.
+  const logged = [];
+  const w = stage1World({ rows: ['33333', '30003', '33333'], x: 4, log: (type, details) => logged.push({ type, ...details }) });
+  w.send([], [{ x: 1, y: 0 }]);
+  otherAgent(w, { x: 2, y: 0 });
+  const move = w.client.move;
+  let moves = 0;
+  w.client.move = async dir => { const result = await move(dir); if (++moves === 1) otherAgent(w, null); return result; };
+  const result = await w.movement.moveTo({ x: 0, y: 0 }, { stopped: false });
+  assert.equal(result.status, 'completed');
+  assert.equal(logged.find(e => e.type === 'replan')?.reason, 'shorter');
+  assert.equal(moves, 6);
+});
+
+test('in PDDL mode the external planner runs once and replans use A*', async () => {
+  const logged = [];
+  let calls = 0;
+  const w = stage1World({
+    rows: ['33333', '33333'], x: 4, mode: 'pddl',
+    solve: async () => { calls++; return ['(move_left t4_0 t3_0)', '(move_left t3_0 t2_0)', '(move_left t2_0 t1_0)', '(move_left t1_0 t0_0)']; },
+    log: (type, details) => logged.push({ type, ...details }),
+  });
+  w.send([], [{ x: 1, y: 0 }]);
+  const move = w.client.move;
+  let moves = 0;
+  w.client.move = async dir => { const result = await move(dir); if (++moves === 1) otherAgent(w, { x: 1, y: 0 }); return result; };
+  const result = await w.movement.moveTo({ x: 0, y: 0 }, { stopped: false });
+  assert.equal(result.status, 'completed');
+  assert.equal(calls, 1);
+  assert.equal(logged.filter(e => e.type === 'pddl_call').length, 1);
+  assert.equal(logged.find(e => e.type === 'replan')?.planner, 'astar');
 });

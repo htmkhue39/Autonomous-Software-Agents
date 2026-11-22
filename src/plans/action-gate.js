@@ -6,9 +6,19 @@
 export class ActionGate {
   /** @type {Promise<unknown> | null} */
   #pending = null;
-  /** @param {{ timeoutMs?: number }} [options] */
-  constructor({ timeoutMs = 8000 } = {}) {
-    this.timeoutMs = timeoutMs;
+  /**
+   * @param {{ timeoutMs?: number, minimumMs?: () => number }} [options]
+   *   `minimumMs` gives the shortest deadline the game allows now, such as a
+   *   few moves at its current speed, which the game's settings may change.
+   */
+  constructor({ timeoutMs = 8000, minimumMs = () => 0 } = {}) {
+    this.baseTimeoutMs = timeoutMs;
+    this.minimumMs = minimumMs;
+  }
+
+  /** The deadline of an action now: the configured one, or longer in a slow game. */
+  get timeoutMs() {
+    return this.baseTimeoutMs > 0 ? Math.max(this.baseTimeoutMs, this.minimumMs()) : this.baseTimeoutMs;
   }
   get busy() { return this.#pending !== null; }
 

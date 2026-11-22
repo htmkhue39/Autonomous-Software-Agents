@@ -22,3 +22,11 @@ test('SDK transport rejection is not treated as a refused move', async () => {
   assert.deepEqual(r, { status: 'unknown', reason: 'socket disconnected' });
   assert.equal(gate.busy, false);
 });
+
+test('the action deadline is never shorter than the game allows', () => {
+  let minimum = 0;
+  const gate = new ActionGate({ timeoutMs: 8000, minimumMs: () => minimum });
+  assert.equal(gate.timeoutMs, 8000);
+  minimum = 20_000;
+  assert.equal(gate.timeoutMs, 20_000);
+});

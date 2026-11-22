@@ -5,7 +5,7 @@ import { stage1World } from './stage1-helpers.js';
 import { GridMap } from '../src/beliefs/map.js';
 import { tilesFromRows } from './helpers.js';
 import { AgentBeliefs } from '../src/beliefs/agents.js';
-import { MovementRunner } from '../src/plans/moveTo.js';
+import { MovementRunner, stepAside } from '../src/plans/moveTo.js';
 import { findPath } from '../src/planning/astar.js';
 import { parcelOpportunities } from '../src/llm/game/viability.js';
 import { createGameTools } from '../src/llm/game/tools.js';
@@ -84,6 +84,47 @@ test('permanently unreachable map fails static-route check promptly', async () =
   assert.equal(result.status, 'failed');
   assert.equal(result.reason, 'Static route impossible');
   assert.ok(events.some(e => e.failureKind === 'static'));
+});
+
+test('blocked in a passage, the agent steps aside once into a side tile to let the other agent pass', async () => {
+  const events = [];
+  // A one-tile-wide passage along y = 0 with a side tile above x = 2.
+  const w = stage1World({ rows: ['0030', '2333'], x: 2 });
+  w.beliefs.agents.update([{ id: 'a', name: 'npc', x: 1, y: 0, score: 0 }], [], w.beliefs.now());
+  const runner = new MovementRunner({ beliefs: w.beliefs, client: w.client, gate: w.gate,
+    mode: 'astar', congestionTimeoutMs: 300, congestionRetryMs: 20, yieldAfterWaits: 2,
+    log: (event, details) => events.push({ event, ...details }) });
+  const result = await runner.moveTo({ x: 0, y: 0 }, { stopped: false });
+  const yields = events.filter(e => e.event === 'navigation_yield');
+  assert.equal(yields.length, 1);
+  assert.equal(yields[0].direction, 'up');
+  assert.deepEqual({ x: w.beliefs.me.x, y: w.beliefs.me.y }, { x: 2, y: 1 });
+  // The other agent never moves here, so the wait still ends on time.
+  assert.equal(result.reason, 'Congestion timeout');
+});
+
+test('the agent does not step aside for a blocking agent further than two tiles away', () => {
+  const map = new GridMap(5, 2, tilesFromRows(['00030', '23333']));
+  const route = new Set(['2,0', '1,0', '0,0']);
+  const far = [{ tiles: [{ x: 0, y: 0 }] }];
+  const near = [{ tiles: [{ x: 2, y: 0 }] }];
+  assert.equal(stepAside(map, { x: 3, y: 0 }, route, { now: 0 }, far, 5, 2), null);
+  assert.equal(stepAside(map, { x: 3, y: 0 }, route, { now: 0 }, near, 1, 2), null);
+  assert.equal(stepAside(map, { x: 3, y: 0 }, route, { now: 0 }, near, 2, 2), 'up');
+});
+
+test('the runner follows a route that pushes a crate out of the way, and believes where it went', async () => {
+  // The straight route would push the crate at (1,1) twice, the second time
+  // onto (3,1), which is not a crate tile. The runner goes round below
+  // instead and pushes the crate up into (2,2).
+  const w = stage1World({ rows: ['0050', '3553', '0330'], x: 0 });
+  w.beliefs.onYou({ ...w.beliefs.me, x: 0, y: 1 });
+  w.beliefs.map.updateCrates([{ x: 1, y: 1 }], []);
+  const runner = new MovementRunner({ beliefs: w.beliefs, client: w.client, gate: w.gate, mode: 'astar' });
+  const result = await runner.moveTo({ x: 3, y: 1 }, { stopped: false });
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(w.events.filter(e => e.action === 'move').map(e => e.dir), ['right', 'down', 'right', 'up', 'right']);
+  assert.equal(w.beliefs.map.hasCrate(2, 2), true);
 });
 
 test('congestion wait respects cancellation', async () => {

@@ -14,14 +14,20 @@ function parcel(id, x, y, reward, carriedBy = null) {
   return { id, x, y, reward, carriedBy };
 }
 
-test('decay settings become milliseconds', () => {
-  assert.equal(decayIntervalMs('1s'), 1000);
-  assert.equal(decayIntervalMs('2s'), 2000);
-  assert.equal(decayIntervalMs('5s'), 5000);
-  assert.equal(decayIntervalMs('10s'), 10000);
-  assert.equal(decayIntervalMs('1m'), 60000);
-  assert.equal(decayIntervalMs('1h'), 3600000);
+test('decay settings become the milliseconds the server clock really waits', () => {
+  assert.equal(decayIntervalMs('1s', 50), 1000);
+  assert.equal(decayIntervalMs('2s', 50), 2000);
+  // '5s' is only checked when '2s' fires, so it comes at 6 s, 12 s, ...
+  assert.equal(decayIntervalMs('5s', 50), 6000);
+  assert.equal(decayIntervalMs('10s', 50), 12000);
+  assert.equal(decayIntervalMs('1m', 50), 60000);
+  assert.equal(decayIntervalMs('1h', 50), 3600000);
   assert.equal(decayIntervalMs('frame', 50), 50);
+});
+
+test('with frames that do not divide a second, a second lasts a whole number of frames', () => {
+  assert.equal(decayIntervalMs('1s', 300), 1200);
+  assert.equal(decayIntervalMs('2s', 300), 2400);
 });
 
 test('an infinite decay setting means no decay', () => {
@@ -35,8 +41,9 @@ test("a decay of one frame needs the server's frame time", () => {
   assert.throws(() => decayIntervalMs('frame'));
 });
 
-test('an unknown decay setting is an error', () => {
-  assert.throws(() => decayIntervalMs(/** @type {any} */ ('soon')));
+test('an event the server clock never fires means no decay', () => {
+  assert.equal(decayIntervalMs('3s', 50), Infinity);
+  assert.equal(decayIntervalMs('soon', 50), Infinity);
 });
 
 test('a parcel loses one point per interval since it was last seen', () => {
@@ -140,4 +147,13 @@ test('the parcels carried by an agent are listed', () => {
   ], [], 0);
   assert.deepEqual(parcels.carriedBy('me', 0).map(p => p.id).sort(), ['mine1', 'mine2']);
   assert.deepEqual(parcels.carriedBy('nobody', 0), []);
+});
+
+test('a parcel loses a point at every decay tick of the game clock since it was seen', () => {
+  const parcels = new ParcelBeliefs(1000);
+  parcels.update([{ id: 'p', x: 0, y: 0, reward: 10, carriedBy: null }], [], 900, 'me');
+  // Only 200 ms later, but the server's tick at 1000 ms took a point off.
+  assert.equal(parcels.get('p', 1100)?.reward, 9);
+  assert.equal(parcels.get('p', 1999)?.reward, 9);
+  assert.equal(parcels.get('p', 2000)?.reward, 8);
 });

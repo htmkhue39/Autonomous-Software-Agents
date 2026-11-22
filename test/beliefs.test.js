@@ -148,12 +148,22 @@ test('a putdown that returns nothing changes nothing', () => {
   assert.deepEqual(beliefs.parcels.carriedBy('me', 0).map(p => p.id), ['p']);
 });
 
-test('a tile holding a crate is blocked for a short time', () => {
-  const { beliefs, clock } = readyBeliefs();
-  clock.t = 100;
+test('a crate in view is remembered until its tile is seen without it', () => {
+  const { beliefs } = readyBeliefs();
   beliefs.onSensing(sensing({ crates: [{ id: 'c', x: 1, y: 1 }] }));
-  assert.equal(beliefs.map?.isWalkable(1, 1, 2099), false);
-  assert.equal(beliefs.map?.isWalkable(1, 1, 2100), true);
+  assert.equal(beliefs.map?.hasCrate(1, 1), true);
+  beliefs.onSensing(sensing({ positions: [{ x: 0, y: 0 }] }));
+  assert.equal(beliefs.map?.hasCrate(1, 1), true);
+  beliefs.onSensing(sensing({ positions: [{ x: 1, y: 1 }] }));
+  assert.equal(beliefs.map?.hasCrate(1, 1), false);
+});
+
+test('an agent seen carrying a parcel becomes a rival', () => {
+  const { beliefs } = readyBeliefs();
+  beliefs.onSensing(sensing({ agents: [{ id: 'npc', name: 'npc', x: 0, y: 0, score: 0 },
+    { id: 'rival', name: 'rival', x: 1, y: 0, score: 0 }],
+  parcels: [{ id: 'p', x: 1, y: 0, reward: 5, carriedBy: 'rival' }] }));
+  assert.deepEqual(beliefs.agents.rivals(beliefs.now()), [{ x: 1, y: 0 }]);
 });
 
 test('a tile event changes the map', () => {
@@ -213,4 +223,25 @@ test('another agent is forgotten once sensing shows its tile without it', () => 
   beliefs.onSensing(sensing({ positions: [{ x: 2, y: 1 }], agents: [{ ...ME, id: 'other', x: 2, y: 1 }] }));
   beliefs.onSensing(sensing({ positions: [{ x: 2, y: 1 }] }));
   assert.deepEqual([...beliefs.agents.occupied(0)], []);
+});
+
+test('waits about moving agents are never shorter than a few moves of the game', () => {
+  const { beliefs } = readyBeliefs();
+  const config = serverConfig();
+  config.GAME.player.movement_duration = 50;
+  beliefs.onConfig(config);
+  assert.equal(beliefs.atLeastMoves(3500, 10), 3500);
+  config.GAME.player.movement_duration = 2000;
+  beliefs.onConfig(config);
+  assert.equal(beliefs.atLeastMoves(3500, 10), 20_000);
+  // A sighted agent blocks its tile for at least six moves, too.
+  assert.equal(beliefs.agents.ttlMs, 12_000);
+});
+
+test('waits on sensing are never shorter than a few frames of the server clock', () => {
+  const { beliefs } = readyBeliefs();
+  const config = serverConfig();
+  config.CLOCK = 500;
+  beliefs.onConfig(config);
+  assert.equal(beliefs.atLeastFrames(300, 3), 1500);
 });

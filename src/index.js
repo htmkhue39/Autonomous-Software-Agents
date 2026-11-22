@@ -20,7 +20,7 @@ const coordination = process.env.COORDINATION_ENABLED === 'true' ? new Coordinat
   client, beliefs, selfName: 'bubble', peerName: 'milktea', log,
 }) : null;
 coordination?.start();
-const gate = new ActionGate({ timeoutMs: config.actionTimeoutMs });
+const gate = new ActionGate({ timeoutMs: config.actionTimeoutMs, minimumMs: () => beliefs.atLeastMoves(0, 4) });
 const movement = new MovementRunner({
   beliefs, client, gate, mode: config.mover,
   pddlTimeoutMs: config.pddlTimeoutMs,
@@ -29,7 +29,9 @@ const movement = new MovementRunner({
 });
 const plans = new PlanLibrary({ beliefs, client, gate, movement, log });
 const agent = new BdiAgent({ beliefs, plans, gate, replaceMargin: config.replaceMargin,
-  minCommitMs: config.minCommitMs, failedGoalCooldownMs: config.failedGoalCooldownMs, coordination, log });
+  minCommitMs: config.minCommitMs, failedGoalCooldownMs: config.failedGoalCooldownMs, coordination, log,
+  optionPolicy: { strategy: config.optionStrategy, minGain: config.minNetGain, timeValuePerS: config.timeValuePerS,
+    deliveryProtection: config.deliveryProtection } });
 /** @type {number | null} */
 let lastScore = null;
 client.onYou(me => {
@@ -53,5 +55,5 @@ const stop = () => {
 };
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
-log('startup', { host: config.host, mode: config.mover });
+log('startup', { host: config.host, mode: config.mover, optionStrategy: config.optionStrategy, minNetGain: config.minNetGain, timeValuePerS: config.timeValuePerS, deliveryProtection: config.deliveryProtection });
 await agent.start();

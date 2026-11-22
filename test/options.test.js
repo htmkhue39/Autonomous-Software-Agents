@@ -91,7 +91,7 @@ test('deliver is offered only while carrying, to the nearest delivery tile', () 
   assert.equal(listOptions(beliefs).some(o => o.type === 'deliver'), false);
   see(beliefs, [parcel('c', 4, 10, 'me')]);
   const deliver = listOptions(beliefs).find(o => o.type === 'deliver');
-  assert.deepEqual(deliver, { id: 'deliver', type: 'deliver', x: 6, y: 0, utility: 10, priority: 0 });
+  assert.deepEqual(deliver, { id: 'deliver:6,0', type: 'deliver', x: 6, y: 0, utility: 10, priority: 0 });
 });
 
 test('no pickup is offered at full capacity', () => {
@@ -134,4 +134,288 @@ test('unlimited capacity still permits pickup', () => {
   const { beliefs } = world(['2313'], { x: 3, y: 0 }, { capacity: -1 });
   see(beliefs, [parcel('c', 3, 10, 'me'), parcel('p', 1, 10)]);
   assert.ok(listOptions(beliefs).some(o => o.id === 'pickup:p'));
+});
+
+test('each delivery tile is its own option, so a failed tile can be skipped', () => {
+  // Delivery tiles at x 0 and x 6; the agent at x 2 is nearer to x 0.
+  const { beliefs } = world(['2333332'], { x: 2, y: 0 });
+  see(beliefs, [parcel('c', 2, 10, 'me')]);
+  assert.equal(listOptions(beliefs).find(o => o.type === 'deliver')?.id, 'deliver:0,0');
+  const other = listOptions(beliefs, { excluded: new Set(['deliver:0,0']) }).find(o => o.type === 'deliver');
+  assert.equal(other?.id, 'deliver:6,0');
+});
+
+test('standing on a delivery tile while carrying ranks delivering here first', () => {
+  // A pickup would be worth more (both parcels), but delivering here costs
+  // no moves at all, so it gets the higher priority.
+  const { beliefs } = world(['3323'], { x: 2, y: 0 }, { decay: 'infinite' });
+  see(beliefs, [parcel('c', 2, 10, 'me'), parcel('p', 0, 30)]);
+  const [first] = listOptions(beliefs);
+  assert.deepEqual(first, { id: 'deliver:2,0', type: 'deliver', x: 2, y: 0, utility: 10, priority: 1 });
+});
+
+test('net_gain offers a pickup only when it beats delivering now by minGain points', () => {
+  // A point is lost every 5 moves. The agent at x 3 carries 'c' (10), and
+  // delivering straight to x 0 takes 3 moves, so it is worth 10.
+  // 'near' (5) at x 2 lies on that route: 3 moves in all, worth 15, gain 5.
+  // 'even' (4) at x 8: 13 moves lose 2 points each, worth 8 + 2 = 10, gain 0.
+  // 'far' (3) at x 9: 15 moves lose 3 points each, worth 7 + 0 = 7, gain -3.
+  // Looking one stop ahead, 'even' and then 'near' on the way back takes 13
+  // moves and is worth 8 + 2 + 3 = 13, gain 3, so 'even' is offered too,
+  // below 'near'. 'far' and then 'even' or 'near' is never worth 11.
+  const { beliefs } = world(['2333333333'], { x: 3, y: 0 });
+  see(beliefs, [parcel('c', 3, 10, 'me'), parcel('near', 2, 5), parcel('even', 8, 4), parcel('far', 9, 3)]);
+  const ids = (/** @type {import('../src/deliberation/options.js').OptionPolicy} */ policy) =>
+    listOptions(beliefs, policy).map(o => o.id).sort();
+  assert.deepEqual(ids({ strategy: 'baseline' }), ['deliver:0,0', 'pickup:even', 'pickup:far', 'pickup:near']);
+  assert.deepEqual(ids({ strategy: 'net_gain', minGain: 1 }), ['deliver:0,0', 'pickup:even', 'pickup:near']);
+  assert.deepEqual(listOptions(beliefs, { strategy: 'net_gain', minGain: 1 })[0].id, 'pickup:near');
+  assert.deepEqual(ids({ strategy: 'net_gain', minGain: 4 }), ['deliver:0,0', 'pickup:near']);
+  assert.deepEqual(ids({ strategy: 'net_gain', minGain: 6 }), ['deliver:0,0']);
+});
+
+test('net_gain always scores the current intention, even below minGain', () => {
+  const { beliefs } = world(['2333333333'], { x: 3, y: 0 });
+  see(beliefs, [parcel('c', 3, 10, 'me'), parcel('even', 8, 4)]);
+  const kept = listOptions(beliefs, { strategy: 'net_gain', minGain: 1, keep: 'pickup:even' });
+  assert.equal(kept.find(o => o.id === 'pickup:even')?.utility, 10);
+});
+
+test('net_gain offers any pickup when nothing is carried', () => {
+  const { beliefs } = world(['2333333333'], { x: 3, y: 0 }, { decay: 'infinite' });
+  see(beliefs, [parcel('far', 9, 30)]);
+  assert.deepEqual(listOptions(beliefs, { strategy: 'net_gain', minGain: 1 }).map(o => o.id), ['pickup:far']);
+});
+
+/**
+ * The most common course settings: 50 ms per move and a point of decay per
+ * second, so a point is lost only every 20 moves. Agent at x 5 on a corridor
+ * of 20 tiles, delivery at x 0, carrying three parcels of 10. Parcel 'near'
+ * (10) is at x 7, 'mid' (10) at x 12, and 'far' (11) at the end, x 19.
+ */
+function slowDecayWorld() {
+  const clock = { t: 0 };
+  const beliefs = new Beliefs({ now: () => clock.t, agentTtlMs: 3000, blockedTtlMs: 2000 });
+  beliefs.onConfig({ CLOCK: 50, AGENT_TIMEOUT: 10000, GAME: { title: 'test', description: '',
+    parcels: { generation_event: '2s', decaying_event: '1s', max: 5, reward_avg: 30, reward_variance: 10 },
+    player: { movement_duration: 50, observation_distance: 10, capacity: -1 } } });
+  beliefs.onMap(0, 0, tilesFromRows(['2' + '3'.repeat(19)]));
+  beliefs.onYou({ id: 'me', name: 'me', x: 5, y: 0, score: 0 });
+  see(beliefs, [parcel('c1', 5, 10, 'me'), parcel('c2', 5, 10, 'me'), parcel('c3', 5, 10, 'me'),
+    parcel('near', 7, 10), parcel('mid', 12, 10), parcel('far', 19, 11)]);
+  return beliefs;
+}
+
+test('without a value of time, slow decay makes every visible pickup beat delivering', () => {
+  // The bug seen in the game: the agent keeps collecting and never delivers.
+  const options = listOptions(slowDecayWorld(), { strategy: 'net_gain', minGain: 1, timeValue: 0 })
+    .filter(o => o.type !== 'explore');
+  // 'near' and 'mid' are both worth 40 and 'far' 37, against 30 for delivering.
+  assert.deepEqual(options.slice(0, 3).map(o => o.id).sort(), ['pickup:far', 'pickup:mid', 'pickup:near']);
+  assert.equal(options[3].id, 'deliver:0,0');
+});
+
+test('with a value of time, the agent delivers and only detours for a close parcel', () => {
+  // 30 points per 1050 ms: one average parcel per trip across the 20 x 1 map.
+  const timeValue = 30 / 1050;
+  const options = listOptions(slowDecayWorld(), { strategy: 'net_gain', minGain: 1, timeValue });
+  // 'near' costs 4 extra moves (200 ms, about 6 points of time) for 10 points.
+  // 'mid' and 'far' cost far more time than they bring.
+  assert.deepEqual(options.filter(o => o.type !== 'explore').map(o => o.id), ['pickup:near', 'deliver:0,0']);
+  const deliver = options.find(o => o.type === 'deliver');
+  assert.equal(deliver?.utility, 30 - timeValue * 5 * 50);
+});
+
+test('delivering is offered while carrying even when its value is below zero', () => {
+  const beliefs = slowDecayWorld();
+  const options = listOptions(beliefs, { strategy: 'net_gain', minGain: 1, timeValue: 1 });
+  const deliver = options.find(o => o.type === 'deliver');
+  assert.ok(deliver && deliver.utility < 0);
+  assert.equal(options[0].id, 'deliver:0,0');
+});
+
+test('under net_gain any pickup outranks exploring, whatever its value', () => {
+  const { beliefs } = world(['1333333332'], { x: 0, y: 0 });
+  beliefs.map?.markSeen([{ x: 0, y: 0 }], 0);
+  see(beliefs, [parcel('p', 8, 10)]);
+  const options = listOptions(beliefs, { strategy: 'net_gain', minGain: 1, timeValue: 1 });
+  assert.deepEqual(options.map(o => [o.type, o.priority]), [['pickup', 0]]);
+  const withExplore = world(['13313332'], { x: 3, y: 0 });
+  see(withExplore.beliefs, [parcel('p', 6, 10)]);
+  const ranked = listOptions(withExplore.beliefs, { strategy: 'net_gain', minGain: 1, timeValue: 1 });
+  assert.deepEqual(ranked.map(o => o.type), ['pickup', 'explore']);
+  assert.ok(ranked[0].utility < 0);
+  assert.equal(ranked[1].priority, -1);
+});
+
+test('a pickup is not scored through a delivery tile that is excluded', () => {
+  // Delivery tiles at x 0 and x 9; the parcel at x 7 is nearer to x 9.
+  const { beliefs } = world(['2333333332'], { x: 5, y: 0 }, { decay: 'infinite' });
+  see(beliefs, [parcel('p', 7, 10)]);
+  const target = (/** @type {Set<string>} */ excluded) =>
+    listOptions(beliefs, { strategy: 'net_gain', excluded }).find(o => o.id === 'pickup:p');
+  assert.ok(target(new Set()));
+  assert.ok(target(new Set(['deliver:9,0'])));
+  // With both tiles excluded there is nowhere to deliver it, so no pickup.
+  assert.equal(target(new Set(['deliver:0,0', 'deliver:9,0'])), undefined);
+});
+
+test('net_gain leaves out a parcel that would reach delivery worthless', () => {
+  // 9 moves of 200 ms with a point lost per second: 1 point lost, all it has.
+  const { beliefs } = world(['2333333333'], { x: 9, y: 0 });
+  see(beliefs, [parcel('p', 5, 1), parcel('q', 5, 5)]);
+  assert.deepEqual(listOptions(beliefs, { strategy: 'net_gain' }).map(o => o.id), ['pickup:q']);
+});
+
+test('net_gain offers no pickup when no delivery tile can be reached from the parcel', () => {
+  const { beliefs } = world(['3313302'], { x: 1, y: 0 }, { decay: 'infinite' });
+  see(beliefs, [parcel('p', 3, 10)]);
+  assert.equal(listOptions(beliefs, { strategy: 'net_gain' }).some(o => o.type === 'pickup'), false);
+});
+
+test('net_gain still explores when no pickup is possible', () => {
+  const { beliefs } = world(['13331'], { x: 2, y: 0 });
+  const options = listOptions(beliefs, { strategy: 'net_gain', timeValue: 1 });
+  assert.deepEqual(options.map(o => o.type), ['explore']);
+});
+
+test('net_gain delivers first when standing on a delivery tile', () => {
+  const { beliefs } = world(['3323'], { x: 2, y: 0 }, { decay: 'infinite' });
+  see(beliefs, [parcel('c', 2, 10, 'me'), parcel('p', 0, 30)]);
+  const [first] = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0.001 });
+  assert.deepEqual([first.id, first.priority], ['deliver:2,0', 1]);
+});
+
+test('a pickup may end on a tile blocked for now when it arrives after the cooldown', () => {
+  // The only delivery tile is x 0. The agent at x 5 sees a parcel at x 3:
+  // 2 moves there and 3 on, 5 moves of 200 ms = 1000 ms.
+  const { beliefs } = world(['2333333'], { x: 5, y: 0 }, { decay: 'infinite' });
+  see(beliefs, [parcel('p', 3, 10)]);
+  const excluded = new Set(['deliver:0,0']);
+  const pickup = (/** @type {Map<string, number>} */ deliveryCooldowns) =>
+    listOptions(beliefs, { strategy: 'net_gain', timeValue: 0.001, excluded, deliveryCooldowns }).find(o => o.id === 'pickup:p');
+  // Excluded with no cooldown known: no tile can end the trip.
+  assert.equal(pickup(new Map()), undefined);
+  // The cooldown ends before the agent arrives: the trip takes its 1000 ms.
+  assert.equal(pickup(new Map([['deliver:0,0', 400]]))?.utility, 10 - 0.001 * 1000);
+  // The cooldown ends later: the trip counts as lasting until then.
+  assert.equal(pickup(new Map([['deliver:0,0', 4000]]))?.utility, 10 - 0.001 * 4000);
+  // Delivering there directly still waits for the cooldown.
+  see(beliefs, [parcel('c', 5, 10, 'me')]);
+  const options = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0.001, excluded, deliveryCooldowns: new Map([['deliver:0,0', 400]]) });
+  assert.equal(options.some(o => o.type === 'deliver'), false);
+});
+
+test('the agent does not deliver into a one-way trap, even when it is nearer', () => {
+  // The arrow at x = 1 points left: after delivering at x = 0 the agent could
+  // never get back to the spawn tile.
+  const { beliefs } = world(['2←3132'], { x: 2, y: 0 });
+  see(beliefs, [parcel('c', 2, 20, 'me')]);
+  for (const strategy of /** @type {const} */ (['baseline', 'net_gain'])) {
+    const deliver = listOptions(beliefs, { strategy }).find(o => o.type === 'deliver');
+    assert.equal(deliver?.id, 'deliver:5,0');
+  }
+});
+
+test('no pickup or exploring is offered inside a one-way trap', () => {
+  const { beliefs } = world(['1←3132'], { x: 2, y: 0 });
+  see(beliefs, [parcel('trapped', 0, 30)]);
+  const options = listOptions(beliefs, { strategy: 'net_gain' });
+  assert.equal(options.some(o => o.id === 'pickup:trapped'), false);
+  assert.equal(options.some(o => o.id === 'explore:0,0'), false);
+});
+
+test('an agent already inside a trap still delivers what it carries there', () => {
+  const { beliefs } = world(['2←3132'], { x: 0, y: 0 });
+  see(beliefs, [parcel('c', 0, 20, 'me')]);
+  assert.equal(listOptions(beliefs, { strategy: 'net_gain' })[0].id, 'deliver:0,0');
+});
+
+test('net_gain looks one stop ahead, so a parcel the other way can come first', () => {
+  // A point is lost every 5 moves, and time costs nothing here. From x 4,
+  // 'lone' (6) at x 3 lies on the way to delivery at x 0: alone it is worth 6
+  // after 4 moves, and fetching 'a' after it is worth 7 at best. 'a' (5) at
+  // x 6 lies the other way: taking it first and 'lone' on the way back takes
+  // 8 moves and is worth 4 + 5 = 9, so 'a' ranks first.
+  const { beliefs } = world(['2333333333'], { x: 4, y: 0 });
+  see(beliefs, [parcel('lone', 3, 6), parcel('a', 6, 5)]);
+  const pickups = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0 }).filter(o => o.type === 'pickup');
+  assert.deepEqual(pickups.map(o => [o.id, o.utility]), [['pickup:a', 9], ['pickup:lone', 7]]);
+});
+
+test('parcels on the same tile are scored together, since a pickup takes them all', () => {
+  const { beliefs } = world(['2333'], { x: 1, y: 0 });
+  see(beliefs, [parcel('x', 3, 10), parcel('y', 3, 7)]);
+  const pickups = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0 }).filter(o => o.type === 'pickup');
+  assert.equal(pickups.length, 1);
+  assert.equal(pickups[0].parcelId, 'x');
+  // 5 moves there and back lose one point from each parcel.
+  assert.equal(pickups[0].utility, 9 + 6);
+});
+
+test('a parcel a rival reaches first counts only for the chance of getting it', () => {
+  const { beliefs } = world(['2333333'], { x: 1, y: 0 });
+  see(beliefs, [parcel('p', 5, 20)]);
+  const before = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0 }).find(o => o.id === 'pickup:p');
+  // A rival one tile from the parcel, seen carrying a parcel before.
+  beliefs.onSensing({ positions: [], agents: [{ id: 'r', name: 'r', x: 6, y: 0, score: 0 }],
+    parcels: [{ id: 'q', x: 6, y: 0, reward: 3, carriedBy: 'r' }], crates: [] });
+  const after = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0 }).find(o => o.id === 'pickup:p');
+  assert.ok(before && after);
+  assert.ok(after.utility < before.utility / 5, `${after.utility} < ${before.utility} / 5`);
+});
+
+test('an agent never seen carrying a parcel is not counted as a rival', () => {
+  const { beliefs } = world(['2333333'], { x: 1, y: 0 });
+  see(beliefs, [parcel('p', 5, 20)]);
+  const before = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0 }).find(o => o.id === 'pickup:p');
+  beliefs.onSensing({ positions: [], agents: [{ id: 'npc', name: 'npc', x: 6, y: 0, score: 0 }], parcels: [], crates: [] });
+  const after = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0 }).find(o => o.id === 'pickup:p');
+  assert.equal(after?.utility, before?.utility);
+});
+
+test('the trip ends where it is worth most: a tile that scores twice beats a nearer one', () => {
+  const { beliefs } = world(['2393'], { x: 3, y: 0 });
+  const config = /** @type {ServerConfig} */ (beliefs.config);
+  beliefs.onConfig({ ...config, GAME: { ...config.GAME, plugins: ['double-delivery'] } });
+  see(beliefs, [parcel('c', 3, 10, 'me')]);
+  const deliver = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0 }).find(o => o.type === 'deliver');
+  assert.equal(deliver?.id, 'deliver:2,0');
+  assert.equal(deliver?.utility, 20);
+});
+
+test('net_gain explores the nearer of two spawn tiles unseen for as long', () => {
+  const { beliefs } = world(['1333331'], { x: 2, y: 0 });
+  const explore = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0.001 }).find(o => o.type === 'explore');
+  assert.equal(explore?.id, 'explore:0,0');
+});
+
+test('net_gain explores a far spawn tile unseen for long rather than a near one just seen', () => {
+  const { beliefs, clock } = world(['1333331'], { x: 2, y: 0 });
+  clock.t = 60_000;
+  beliefs.map?.markSeen([{ x: 0, y: 0 }], 59_000);
+  beliefs.map?.markSeen([{ x: 6, y: 0 }], 1_000);
+  const explore = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0.001 }).find(o => o.type === 'explore');
+  assert.equal(explore?.id, 'explore:6,0');
+});
+
+test('net_gain explores towards the unseen part of a map where every tile spawns parcels', () => {
+  // As on empty_30: from a corner, the tiles around the agent were just seen,
+  // and one spawn tile alone is worth less than a move. The area seen from a
+  // tile further off is worth the walk, so the agent does not shuffle between
+  // the tiles next to it.
+  const rows = Array.from({ length: 12 }, () => '111111111111');
+  const { beliefs, clock } = world(rows, { x: 0, y: 0 });
+  clock.t = 60_000;
+  const near = [];
+  for (let x = 0; x < 12; x++) for (let y = 0; y < 12; y++) if (x + y <= 5) near.push({ x, y });
+  beliefs.map?.markSeen(near, 60_000);
+  const explore = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0.009 }).find(o => o.type === 'explore');
+  assert.ok(explore && explore.x + explore.y > 5, `${explore?.id}`);
+});
+
+test('net_gain explores sensibly when parcels never decay', () => {
+  const { beliefs } = world(['1333331'], { x: 2, y: 0 }, { decay: 'infinite' });
+  const explore = listOptions(beliefs, { strategy: 'net_gain', timeValue: 0.001 }).find(o => o.type === 'explore');
+  assert.equal(explore?.id, 'explore:0,0');
 });

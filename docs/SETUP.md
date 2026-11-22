@@ -56,6 +56,22 @@ AGENT=bubble MOVER=pddl npm start
 
 Inspect the agent JSONL logs/terminal for `pddl_call` and `pddl_success`. A `planner_fallback` to A* does not demonstrate a successful external PDDL call. The solver is reached through `@unitn-asa/pddl-client` and requires internet access.
 
+**BDI with the PDDL task planner:**
+
+```bash
+AGENT=bubble MOVER=astar TASK_PLANNER=pddl npm start
+```
+
+With two parcels or more involved, the agent asks the external solver for the order of pickups and deliveries, while A* still finds each walk. The settings are:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `TASK_PLANNER` | `off` | `pddl` turns the task planner on; `off` keeps the agent's own choices |
+| `TASK_PLANNER_MAX_PARCELS` | `5` | the most free parcels in one task problem, the nearest first |
+| `TASK_PLANNER_TIMEOUT_MS` | `3000` | how long to wait for a plan before going on without it |
+
+Look for `pddl_task_call`, then `pddl_task_success` or `pddl_task_failure` (with `reason`), each with `durationMs`, and `pddl_task_choice`, which shows whether the plan was followed (`adopted`) and what it was worth (`planFirstTrip`) against the agent's own choice (`netGainUtility`). Intentions taken from the plan are logged with `source: 'pddl_task'`.
+
 **LLM standalone:**
 
 ```bash

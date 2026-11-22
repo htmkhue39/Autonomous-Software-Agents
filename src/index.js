@@ -1,68 +1,57 @@
-// Starts the agent: connects to the server, passes every server message to
-// the beliefs, builds the plans and runs the agent loop.
-// Run with: npm start   (or AGENT=milktea npm start)
-import { config } from './config.js';
 import { connect } from './client.js';
+import { config } from './config.js';
 import { Beliefs } from './beliefs/index.js';
-import { listOptions } from './deliberation/options.js';
-import { IntentionRevision } from './intentions/revision.js';
-import { planLibrary } from './plans/library.js';
-import { astarRoute } from './planning/astar.js';
-
-/** @typedef {import('./intentions/revision.js').RevisionEvent} RevisionEvent */
+import { ActionGate } from './plans/action-gate.js';
+import { MovementRunner } from './plans/moveTo.js';
+import { PlanLibrary } from './plans/library.js';
+import { BdiAgent } from './intentions/agent.js';
+import { logEvent } from './metrics/log.js';
+import { CoordinationController } from './coordination/controller.js';
 
 const client = connect(config);
-
-// With no token, the server creates a new agent and sends its token. Put the
-// token in .env to play as the same agent next time.
-client.socket.once('token', (/** @type {string} */ token) =>
-  console.log(`[token] new agent; put TOKEN_${config.name.toUpperCase()}=${token} in .env to keep it`));
-client.socket.on('connect', () => console.log(`[connection] connected to ${config.host} as ${config.name}`));
-client.socket.on('disconnect', (/** @type {string} */ reason) => console.log(`[connection] lost: ${reason}`));
-
 const beliefs = new Beliefs({
   agentTtlMs: config.agentTtlMs,
   blockedTtlMs: config.blockedTtlMs,
   maxBlockedMs: config.maxBlockedMs,
 });
 beliefs.listen(client);
-
-if (config.mover === 'pddl') console.log('[mover] PDDL is not written yet (Task 8); using A*');
-const plans = planLibrary({ beliefs, client, planRoute: astarRoute, maxFailures: config.maxMoveRetries });
-
-const fading = { halfLifeMs: config.parcelHalfLifeMs, minChance: config.minParcelChance };
-const loop = new IntentionRevision({
-  beliefs,
-  plans,
-  margin: config.replaceMargin,
-  options: () => listOptions(beliefs, fading),
-  onEvent: report,
+const log = (/** @type {string} */ event, /** @type {object} */ data) => logEvent(event, { agent: config.name, ...data });
+const coordination = process.env.COORDINATION_ENABLED === 'true' ? new CoordinationController({
+  client, beliefs, selfName: 'bubble', peerName: 'milktea', log,
+}) : null;
+coordination?.start();
+const gate = new ActionGate({ timeoutMs: config.actionTimeoutMs });
+const movement = new MovementRunner({
+  beliefs, client, gate, mode: config.mover,
+  pddlTimeoutMs: config.pddlTimeoutMs,
+  maxMoveRetries: config.maxMoveRetries,
+  congestionTimeoutMs: config.congestionTimeoutMs, congestionRetryMs: config.congestionRetryMs, log,
+});
+const plans = new PlanLibrary({ beliefs, client, gate, movement, log });
+const agent = new BdiAgent({ beliefs, plans, gate, replaceMargin: config.replaceMargin,
+  minCommitMs: config.minCommitMs, failedGoalCooldownMs: config.failedGoalCooldownMs, coordination, log });
+/** @type {number | null} */
+let lastScore = null;
+client.onYou(me => {
+  if (lastScore === null) log('score_observed', { score: me.score });
+  else if (me.score !== lastScore) log('score_changed', { previous: lastScore, score: me.score });
+  lastScore = me.score;
 });
 
-/** @param {RevisionEvent} event */
-function report({ kind, option, reason }) {
-  const score = beliefs.me?.score ?? 0;
-  const value = option.utility.toFixed(1);
-  console.log(`[${kind}] ${option.id} (worth ${value})${reason ? `: ${reason}` : ''} | score ${score}`);
-}
-
-// Print the map when a game starts, and the score every 30 s.
-let announcedMap = /** @type {unknown} */ (undefined);
+let gameReadyLogged = false;
 beliefs.onChange(() => {
-  if (!beliefs.ready || beliefs.map === announcedMap) return;
-  announcedMap = beliefs.map;
-  const { GAME } = /** @type {NonNullable<typeof beliefs.config>} */ (beliefs.config);
-  console.log(`[map] ${GAME.title} ${beliefs.map?.width} x ${beliefs.map?.height}, capacity ${GAME.player.capacity}, decay ${GAME.parcels.decaying_event}`);
-});
-setInterval(() => {
-  const warnings = beliefs.me?.attributes?.find(a => a.kind === 'warnings')?.value ?? 0;
-  console.log(`[status] score ${beliefs.me?.score ?? 0}, warnings ${warnings}, other agents ${beliefs.agents.count}`);
-}, 30_000).unref();
-
-process.on('SIGINT', () => {
-  loop.halt();
-  console.log(`[stop] score ${beliefs.me?.score ?? 0}`);
-  process.exit(0);
+  if (gameReadyLogged || !beliefs.ready || !beliefs.positionStable) return;
+  gameReadyLogged = true;
+  log('bdi_game_ready', { level: beliefs.config?.GAME.title });
 });
 
-await loop.run();
+client.socket.on('token', (/** @type {string} */ token) => log('token_issued', { note: 'Store new token locally in .env; token is deliberately not logged', tokenReceived: !!token }));
+client.socket.on('disconnect', (/** @type {string} */ reason) => { agent.stop(); coordination?.stop(); log('disconnected', { reason }); });
+const stop = () => {
+  if (process.env.BENCHMARK_CONTINUOUS === 'true') log('benchmark_bdi_final', { score: lastScore });
+  agent.stop(); coordination?.stop(); client.socket.disconnect?.();
+};
+process.on('SIGINT', stop);
+process.on('SIGTERM', stop);
+log('startup', { host: config.host, mode: config.mover });
+await agent.start();

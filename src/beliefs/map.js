@@ -112,10 +112,10 @@ export class GridMap {
    * @param {number} y
    * @param {number} now
    */
-  isWalkable(x, y, now) {
+  isWalkable(x, y, now, { ignoreTemporary = false } = {}) {
     const type = this.typeAt(x, y);
     if (type === undefined || type === '0') return false;
-    return (this.#blockedUntil.get(key(x, y)) ?? -Infinity) <= now;
+    return ignoreTemporary || (this.#blockedUntil.get(key(x, y)) ?? -Infinity) <= now;
   }
 
   /**
@@ -124,15 +124,22 @@ export class GridMap {
    * @param {number} x
    * @param {number} y
    * @param {number} now
+   * @param {{ignoreTemporary?:boolean}} [options] Diagnostic only: retain walls and one-way rules.
    * @returns {(Position & { dir: Direction })[]}
    */
-  neighbors(x, y, now) {
+  neighbors(x, y, now, { ignoreTemporary = false } = {}) {
     const result = [];
+    const arrow = /** @type {Record<string, Direction>} */ ({ '↑': 'up', '↓': 'down', '←': 'left', '→': 'right' });
     for (const [dir, { dx, dy }] of /** @type {[Direction, {dx: number, dy: number}][]} */ (Object.entries(DIRS))) {
+      // A directional tile may only be traversed in its arrow direction.
+      const fromArrow = arrow[this.typeAt(x, y) ?? ''];
+      if (fromArrow && fromArrow !== dir) continue;
       const nx = x + dx;
       const ny = y + dy;
       const refusedUntil = this.#failedMoves.get(`${key(x, y)},${dir}`)?.until ?? -Infinity;
-      if (this.isWalkable(nx, ny, now) && refusedUntil <= now) {
+      const intoArrow = arrow[this.typeAt(nx, ny) ?? ''];
+      if (intoArrow && intoArrow !== dir) continue;
+      if (this.isWalkable(nx, ny, now, { ignoreTemporary }) && (ignoreTemporary || refusedUntil <= now)) {
         result.push({ x: nx, y: ny, dir });
       }
     }

@@ -24,6 +24,9 @@ export class Beliefs {
   map;
   /** @type {AgentState | undefined} the agent itself, at a rounded position */
   me;
+  /** @type {{x:number,y:number}|undefined} raw self position for action reconciliation */
+  rawMe;
+  get positionStable() { return !!this.rawMe && Number.isInteger(this.rawMe.x) && Number.isInteger(this.rawMe.y); }
   /** @type {(() => void)[]} */
   #listeners = [];
 
@@ -52,6 +55,12 @@ export class Beliefs {
   /** @param {() => void} callback */
   onChange(callback) {
     this.#listeners.push(callback);
+    // Temporary listeners (e.g. waiting for a pickup sensing update) must
+    // be removable; the autonomous controller's permanent listener remains.
+    return () => {
+      const index = this.#listeners.indexOf(callback);
+      if (index !== -1) this.#listeners.splice(index, 1);
+    };
   }
 
   /** @param {Client} client */
@@ -73,14 +82,7 @@ export class Beliefs {
   }
 
   /**
-   * The server sends the map when a game starts and after every
-   * reconnection. Each time, the agent forgets the parcels and agents it
-   * knew, because a new game reuses parcel ids (an old 'p5' would be taken
-   * for the new 'p5'). Parcels the agent is carrying are not lost: the next
-   * sensing reports them, since they are on the agent's own tile.
-   *
-   * The server reports a map size one too small, so the size is taken from
-   * the tiles.
+   * The server reports a size one too small, so it is taken from the tiles.
    * @param {number} _width
    * @param {number} _height
    * @param {Tile[]} tiles
@@ -89,8 +91,6 @@ export class Beliefs {
     const width = Math.max(...tiles.map(t => t.x)) + 1;
     const height = Math.max(...tiles.map(t => t.y)) + 1;
     this.map = new GridMap(width, height, tiles, { blockedTtlMs: this.blockedTtlMs, maxBlockedMs: this.maxBlockedMs });
-    this.parcels = new ParcelBeliefs(this.parcels.decayMs);
-    this.agents = new AgentBeliefs(this.agents.ttlMs);
     this.#changed();
   }
 
@@ -102,6 +102,7 @@ export class Beliefs {
 
   /** @param {AgentState} me */
   onYou(me) {
+    this.rawMe = { x: me.x, y: me.y };
     this.me = { ...me, x: Math.round(me.x), y: Math.round(me.y) };
     this.#changed();
   }
@@ -127,17 +128,24 @@ export class Beliefs {
   }
 
   /**
-   * The agent's pickup returned these parcels. The server's reply carries no
-   * parcel ids (design.md section 9), so only whether it is empty counts:
-   * if not, the free parcels believed on the agent's tile are now carried
-   * by it; if so, they are gone.
+   * The agent's pickup returned these parcels. When every returned parcel
+   * carries its id, exactly those parcels are now carried by the agent.
+   * The server's reply may carry no ids (design.md section 9), and then
+   * only whether it is empty counts: if not, the free parcels believed on
+   * the agent's tile are now carried by it; if so, they are gone.
    * @param {unknown[]} picked
    */
   onPickup(picked) {
     if (!this.me) return;
     const { x, y } = this.me;
-    if (picked.length > 0) this.parcels.pickedUpAt({ x, y }, this.me.id);
-    else this.parcels.forgetFreeAt({ x, y });
+    const ids = picked.map(p => (p && typeof p === 'object' ? /** @type {{ id?: unknown }} */ (p).id : undefined));
+    if (picked.length > 0 && ids.every(id => typeof id === 'string')) {
+      this.parcels.pickedUp(/** @type {string[]} */ (ids), this.me.id);
+    } else if (picked.length > 0) {
+      this.parcels.pickedUpAt({ x, y }, this.me.id);
+    } else {
+      this.parcels.forgetFreeAt({ x, y });
+    }
     this.#changed();
   }
 
@@ -152,6 +160,19 @@ export class Beliefs {
     const { x, y } = this.me;
     this.parcels.putDownAll(this.me.id, { x, y }, { delivered: this.map?.typeAt(x, y) === '2' });
     this.#changed();
+  }
+
+  /** @param {import('../types.js').Parcel[]} parcels @param {number} observedAt */
+  onSharedParcels(parcels, observedAt) {
+    const added = this.parcels.mergeShared(parcels, observedAt, this.now());
+    if (added) this.#changed();
+    return added;
+  }
+
+  /** @param {string} id */
+  onPeerCollected(id) {
+    if (this.me && this.parcels.get(id, this.now())?.carriedBy === this.me.id) return;
+    if (this.parcels.forget(id)) this.#changed();
   }
 
   #changed() {

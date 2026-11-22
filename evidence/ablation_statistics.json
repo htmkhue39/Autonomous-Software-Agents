@@ -1,0 +1,27 @@
+{
+  "design": "independent_game_worlds_randomized_order",
+  "n_per_condition": 10,
+  "observed_score_not_official": true,
+  "world_seed_controlled": false,
+  "schedule_seed_only": 20261112,
+  "C0_mean": 243.7,
+  "C1_mean": 376.3,
+  "difference": 132.60000000000002,
+  "relative_percent": 54.411161263849,
+  "C0_median": 239.0,
+  "C1_median": 377.5,
+  "C0_sd": 118.93233370282448,
+  "C1_sd": 101.25441005484925,
+  "Welch95CI": [
+    28.638069133236655,
+    236.5619308667634
+  ],
+  "Welch_p_two_sided": 0.01536928994295632,
+  "welch_degrees_of_freedom": 17.55319752059937,
+  "C0_deliveries_mean": 16.1,
+  "C1_deliveries_mean": 26.9,
+  "C0_teammate_congestion_mean": 4.7,
+  "C1_teammate_congestion_mean": 1.7,
+  "C1_evacuations_success_total": 44,
+  "C1_evacuations_attempts_total": 44
+}

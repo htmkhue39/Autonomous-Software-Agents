@@ -9,13 +9,16 @@ test('with an empty environment every setting has its default', () => {
     name: 'bubble',
     mover: 'astar',
     replaceMargin: 1.2,
+    minCommitMs: 6000,
+    failedGoalCooldownMs: 10_000,
     blockedTtlMs: 2000,
     maxBlockedMs: 30_000,
     agentTtlMs: 3000,
     maxMoveRetries: 3,
+    congestionTimeoutMs: 3500,
+    congestionRetryMs: 180,
     pddlTimeoutMs: 5000,
-    parcelHalfLifeMs: 20_000,
-    minParcelChance: 0.2,
+    actionTimeoutMs: 8000,
   });
 });
 
@@ -42,8 +45,6 @@ test('tuning constants can be overridden from the environment', () => {
     AGENT_TTL_MS: '500',
     MAX_MOVE_RETRIES: '5',
     PDDL_TIMEOUT_MS: '2000',
-    PARCEL_HALF_LIFE_MS: '8000',
-    MIN_PARCEL_CHANCE: '0.5',
   });
   assert.equal(config.replaceMargin, 1.5);
   assert.equal(config.blockedTtlMs, 1000);
@@ -51,8 +52,6 @@ test('tuning constants can be overridden from the environment', () => {
   assert.equal(config.agentTtlMs, 500);
   assert.equal(config.maxMoveRetries, 5);
   assert.equal(config.pddlTimeoutMs, 2000);
-  assert.equal(config.parcelHalfLifeMs, 8000);
-  assert.equal(config.minParcelChance, 0.5);
 });
 
 test('an empty tuning variable keeps the default', () => {

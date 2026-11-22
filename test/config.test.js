@@ -25,7 +25,7 @@ test('with an empty environment every setting has its default', () => {
     deliveryProtection: 0,
     taskPlanner: 'off',
     taskPlannerMaxParcels: 5,
-    taskPlannerTimeoutMs: 3000,
+    taskPlannerTimeoutMs: 10_000,
   });
 });
 

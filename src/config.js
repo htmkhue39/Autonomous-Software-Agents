@@ -40,7 +40,7 @@ export function loadConfig(env) {
     deliveryProtection: atLeastZero(env, 'DELIVERY_PROTECTION', 0), // with net_gain: the gain above which a pickup gives way to delivering
     taskPlanner: taskPlanner(env),                             // 'pddl' asks the PDDL task planner for the order of pickups and deliveries
     taskPlannerMaxParcels: Math.floor(num('TASK_PLANNER_MAX_PARCELS', 5)), // the most free parcels in one task problem, the nearest first
-    taskPlannerTimeoutMs: num('TASK_PLANNER_TIMEOUT_MS', 3000), // how long to wait for a task plan before keeping the agent's own choice
+    taskPlannerTimeoutMs: num('TASK_PLANNER_TIMEOUT_MS', 10_000), // how long to wait for a task plan; the online solver takes about 6-7 s
   };
 }
 

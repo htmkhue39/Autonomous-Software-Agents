@@ -48,9 +48,9 @@ export async function solveNavigation(map, from, to, options, { solve = courseSo
  * @param {{ solve?: typeof courseSolver, timeoutMs?: number, log?: (event:string, details:object)=>void }} [settings]
  * @returns {Promise<import('./task-problem.js').Task[]>}
  */
-export async function solveTasks(spec, { solve = courseSolver, timeoutMs = 3000, log = () => {} } = {}) {
+export async function solveTasks(spec, { solve = courseSolver, timeoutMs = 10_000, log = () => {} } = {}) {
   const began = Date.now();
-  const size = { parcels: spec.parcels.size, carried: spec.carried.size, places: spec.locations.size, slots: spec.slots.length };
+  const size = { free: spec.parcels.size - spec.carried.size, carried: spec.carried.size, places: spec.locations.size, slots: spec.slots.length };
   log('pddl_task_call', size);
   let timer;
   try {

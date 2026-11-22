@@ -1,4 +1,6 @@
-import { listOptions } from '../deliberation/options.js';
+import { deliverId, listOptions, usableDeliveryTiles } from '../deliberation/options.js';
+import { buildTaskProblem, evaluateTaskPlan } from '../planning/pddl/task-problem.js';
+import { solveTasks } from '../planning/pddl/solve.js';
 import { EarningRate, priorEarningRate } from '../deliberation/rate.js';
 import { reconsider } from './revision.js';
 import { decayIntervalMs } from '../beliefs/parcels.js';
@@ -42,7 +44,8 @@ export class BdiAgent {
    * replaceMargin?:number, log?:(type:string,details:object)=>void,
    * idleMs?:number, minCommitMs?:number, failedGoalCooldownMs?:number,
    * now?:()=>number, coordination?:import('../coordination/controller.js').CoordinationController|null,
-   * optionPolicy?:{ strategy?:'baseline'|'net_gain', minGain?:number, deliveryProtection?:number, timeValuePerS?:number|null } }} options
+   * optionPolicy?:{ strategy?:'baseline'|'net_gain', minGain?:number, deliveryProtection?:number, timeValuePerS?:number|null },
+   * taskPlanning?:{ maxParcels:number, timeoutMs:number, solve?:typeof import('../planning/pddl/solve.js').courseSolver } | null }} options
    *   `optionPolicy` chooses how pickups are weighed against delivering (see listOptions).
    *   With the 'net_gain' strategy, switching intentions follows the score
    *   alone: another goal replaces the current one as soon as it is worth at
@@ -51,10 +54,19 @@ export class BdiAgent {
    *   its time at `timeValuePerS` points per second when that is set, and
    *   otherwise at the agent's own earning rate, learned from its score.
    *   `deliveryProtection` lets a pickup give way to delivering on a smaller
-   *   gain than `minGain` (see reconsider). */
+   *   gain than `minGain` (see reconsider).
+   *   `taskPlanning`, when given, asks the PDDL task planner for the order
+   *   of pickups and deliveries whenever two parcels or more are involved
+   *   (see #taskChoice). Left out, the agent chooses as before. */
   constructor({ beliefs, plans, gate, replaceMargin = 1.2, log = () => {}, idleMs = 200,
-    minCommitMs = 6000, failedGoalCooldownMs = 10000, now = Date.now, coordination = null, optionPolicy = {} }) {
+    minCommitMs = 6000, failedGoalCooldownMs = 10000, now = Date.now, coordination = null, optionPolicy = {},
+    taskPlanning = null }) {
     this.beliefs = beliefs;
+    this.taskPlanning = taskPlanning;
+    /** @type {{ tasks: import('../planning/pddl/task-problem.js').Task[], seen: Set<string> } | null} the plan being followed */
+    this.taskPlan = null;
+    /** @type {Set<string> | null} the parcels known when the planner last failed or lost to the agent's own choice */
+    this.taskDeclined = null;
     this.optionPolicy = optionPolicy;
     /** @type {EarningRate | null} created once the map and game settings are known */
     this.earningRate = null;
@@ -190,6 +202,102 @@ export class BdiAgent {
         this.coordination.canTarget(option.parcelId ?? '', { x: option.x, y: option.y })));
   }
 
+  /**
+   * The option the PDDL task plan says to do next, or null to keep `best`,
+   * the agent's own choice.
+   *
+   * With two parcels or more involved (carried ones included), the order of
+   * pickups and deliveries is a planning problem (task-problem.js). A plan
+   * found earlier is followed while its next step is still available and no
+   * new parcel has come into reach; otherwise the planner is asked again.
+   * One parcel has only one order, so then the planner is not asked. When it
+   * fails, times out or returns a plan that does not check out, the agent
+   * keeps its own choice; solveTasks logs 'pddl_task_failure' with the reason.
+   * After a failure, or a plan that lost to the agent's own choice, the
+   * planner is asked again only once a parcel it did not know of appears.
+   *
+   * The online solver only finds a valid order, not the shortest, so its plan
+   * is scored by the agent's own utility (evaluateTaskPlan). It is followed
+   * only when its first trip is worth at least what `best` is; both values
+   * are logged as 'pddl_task_choice'. Delivering on the tile the agent stands
+   * on is a reflex and never waits for the planner.
+   * @param {import('../types.js').Option} best
+   * @param {import('../types.js').Option[]} options
+   * @returns {Promise<import('../types.js').Option | null>}
+   */
+  async #taskChoice(best, options) {
+    const planning = this.taskPlanning;
+    const { config, map, me } = this.beliefs;
+    if (!planning || !config || !map || !me || best.priority > 0) return null;
+    const now = this.beliefs.now();
+    const carried = this.beliefs.parcels.carriedBy(me.id, now);
+    const free = this.beliefs.parcels.free(now).filter(p => p.reward > 0);
+
+    const following = this.taskPlan ? this.#nextPlannedOption(this.taskPlan, options, free, carried) : null;
+    if (following) return following;
+    this.taskPlan = null;
+    // Asking again about the same parcels would give the same answer, and each call takes time.
+    const known = new Set([...free, ...carried].map(p => p.id));
+    const declined = this.taskDeclined;
+    if (declined && [...known].every(id => declined.has(id))) return null;
+
+    const paths = { now, occupied: this.beliefs.agents.occupied(now) };
+    const spec = buildTaskProblem({ map, me, carried, parcels: free,
+      deliveries: usableDeliveryTiles(this.beliefs, new Set(this.failedGoals.keys())),
+      capacity: config.GAME.player.capacity, paths, maxParcels: planning.maxParcels });
+    if (!spec) return null;
+    let tasks;
+    try { tasks = await solveTasks(spec, { solve: planning.solve, timeoutMs: planning.timeoutMs, log: this.log }); }
+    catch { this.taskDeclined = known; return null; }
+
+    const rewards = new Map([...spec.parcels.values()].map(p => [p.id, p.reward]));
+    const value = evaluateTaskPlan(tasks, { rewards, now, moveMs: config.GAME.player.movement_duration,
+      decayMs: this.beliefs.parcels.decayMs, perMs: this.timeValue() });
+    // The parcels the agent knew of when it planned: only a parcel seen since then calls for a new plan.
+    const plan = { tasks, seen: new Set([...free, ...carried].map(p => p.id)) };
+    // The parcels may have moved on while the planner thought: check the plan against them now.
+    const next = this.#nextPlannedOption(plan, this.#availableOptions(), this.beliefs.parcels.free(this.beliefs.now()), this.beliefs.parcels.carriedBy(me.id, this.beliefs.now()));
+    const adopted = next !== null && value.firstTrip >= best.utility;
+    this.log('pddl_task_choice', { adopted, next: next?.id ?? null, netGainChoice: best.id,
+      planFirstTrip: value.firstTrip, planTotal: value.total, netGainUtility: best.utility });
+    if (!adopted) { this.taskDeclined = known; return null; }
+    this.taskDeclined = null;
+    this.taskPlan = plan;
+    return next;
+  }
+
+  /**
+   * The available option that carries out the plan's next step, or null when
+   * the plan no longer fits the beliefs: a parcel it counts on is gone, a
+   * parcel the agent did not know of when it planned has come into reach, or
+   * its next step is not among the options.
+   * @param {{ tasks: import('../planning/pddl/task-problem.js').Task[], seen: Set<string> }} plan
+   * @param {import('../types.js').Option[]} options
+   * @param {import('../types.js').Parcel[]} free  free parcels now
+   * @param {import('../types.js').Parcel[]} carried  parcels the agent carries now
+   */
+  #nextPlannedOption(plan, options, free, carried) {
+    const freeIds = new Set(free.map(p => p.id));
+    const carriedIds = new Set(carried.map(p => p.id));
+    // A parcel the plan does not know of may change the best order.
+    if ([...freeIds].some(id => !plan.seen.has(id) && options.some(o => o.parcelId === id))) return null;
+    for (const task of plan.tasks) {
+      if (task.type === 'goto') continue;
+      if (task.type === 'pickup') {
+        if (carriedIds.has(task.parcelId)) continue;
+        if (!freeIds.has(task.parcelId)) return null;
+        return options.find(o => o.type === 'pickup' && o.x === task.at.x && o.y === task.at.y) ?? null;
+      }
+      if (!carriedIds.has(task.parcelId)) {
+        // Delivered already, or lost: the plan is only still good if it was delivered.
+        if (freeIds.has(task.parcelId)) return null;
+        continue;
+      }
+      return options.find(o => o.id === deliverId(task.at.x, task.at.y)) ?? null;
+    }
+    return null;
+  }
+
   stop() { this.running = false; if (this.signal) this.signal.stopped = true; this.coordination?.release(undefined, 'stopped'); }
 
   /** Execute until stopped, using current world belief rather than a static fixture. */
@@ -208,9 +316,12 @@ export class BdiAgent {
           if (this.#observations > n && this.beliefs.positionStable) this.reconciled = true;
           continue;
         }
-        const decision = reconsider(null, this.#availableOptions(), this.replaceMargin);
+        const available = this.#availableOptions();
+        const decision = reconsider(null, available, this.replaceMargin);
         if (!decision.next) { await sleep(this.idleMs); continue; }
-        const option = decision.next;
+        const planned = this.taskPlanning ? await this.#taskChoice(decision.next, available) : null;
+        if (!this.running) break;
+        const option = planned ?? decision.next;
         if (option.type === 'pickup' && option.parcelId && this.coordination) {
           const acquired = await this.coordination.acquire(option.parcelId, option, { onYield: () => {
             if (this.active?.id === option.id && this.signal) this.signal.stopped = true;
@@ -231,6 +342,7 @@ export class BdiAgent {
         const signal = { stopped: false };
         this.signal = signal;
         this.log('intention_activated', { id: option.id, type: option.type, utility: option.utility, target: {x:option.x,y:option.y},
+          ...(planned ? { source: 'pddl_task' } : {}),
           ...(this.optionPolicy.strategy === 'net_gain' ? { timeValuePerS: Math.round(this.timeValue() * 1000 * 100) / 100 } : {}) });
         let outcome;
         try { outcome = await this.plans.execute(option, signal); }

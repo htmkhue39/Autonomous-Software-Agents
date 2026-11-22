@@ -161,6 +161,9 @@
  * @property {number} [congestionTimeoutMs]
  * @property {number} [congestionRetryMs]
  * @property {number} pddlTimeoutMs
+ * @property {'off' | 'pddl'} taskPlanner  whether the PDDL task planner orders pickups and deliveries
+ * @property {number} taskPlannerMaxParcels  the most free parcels in one task problem
+ * @property {number} taskPlannerTimeoutMs  how long to wait for a task plan
  * @property {number} actionTimeoutMs
  * @property {'baseline' | 'net_gain'} optionStrategy  how pickups are weighed against delivering
  * @property {number} minNetGain  with net_gain, the fewest extra points a switch of goal must earn

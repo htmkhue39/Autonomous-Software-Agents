@@ -23,7 +23,19 @@ test('with an empty environment every setting has its default', () => {
     minNetGain: 1,
     timeValuePerS: null,
     deliveryProtection: 0,
+    taskPlanner: 'off',
+    taskPlannerMaxParcels: 5,
+    taskPlannerTimeoutMs: 3000,
   });
+});
+
+test('TASK_PLANNER is off unless it is set to pddl, and its limits can be set', () => {
+  assert.equal(loadConfig({ TASK_PLANNER: 'pddl' }).taskPlanner, 'pddl');
+  assert.equal(loadConfig({ TASK_PLANNER: 'off' }).taskPlanner, 'off');
+  assert.throws(() => loadConfig({ TASK_PLANNER: 'llm' }), /TASK_PLANNER/);
+  const config = loadConfig({ TASK_PLANNER_MAX_PARCELS: '6', TASK_PLANNER_TIMEOUT_MS: '1500' });
+  assert.equal(config.taskPlannerMaxParcels, 6);
+  assert.equal(config.taskPlannerTimeoutMs, 1500);
 });
 
 test('AGENT picks the name and the matching TOKEN_<AGENT>', () => {

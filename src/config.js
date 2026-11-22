@@ -38,7 +38,23 @@ export function loadConfig(env) {
     minNetGain: num('MIN_NET_GAIN', 1),                        // with net_gain: the fewest extra points a switch of goal must earn
     timeValuePerS: timeValue(env),                             // with net_gain: points one second is worth; null learns it from the score
     deliveryProtection: atLeastZero(env, 'DELIVERY_PROTECTION', 0), // with net_gain: the gain above which a pickup gives way to delivering
+    taskPlanner: taskPlanner(env),                             // 'pddl' asks the PDDL task planner for the order of pickups and deliveries
+    taskPlannerMaxParcels: Math.floor(num('TASK_PLANNER_MAX_PARCELS', 5)), // the most free parcels in one task problem, the nearest first
+    taskPlannerTimeoutMs: num('TASK_PLANNER_TIMEOUT_MS', 3000), // how long to wait for a task plan before keeping the agent's own choice
   };
+}
+
+/**
+ * TASK_PLANNER is 'off' unless it is set to 'pddl', so that the agent keeps
+ * its usual choices until the task planner is turned on.
+ * @param {Record<string, string | undefined>} env
+ * @returns {'off' | 'pddl'}
+ */
+function taskPlanner(env) {
+  const raw = env.TASK_PLANNER;
+  if (raw === undefined || raw === '' || raw === 'off') return 'off';
+  if (raw === 'pddl') return 'pddl';
+  throw new Error(`TASK_PLANNER must be off or pddl, got '${raw}'`);
 }
 
 /**

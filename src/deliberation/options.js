@@ -245,6 +245,23 @@ export function listOptions(beliefs, { strategy = 'baseline', minGain = 1, timeV
 }
 
 /**
+ * The delivery tiles the agent may deliver on now: those it can go on
+ * playing from (see playableLoop), less those in `excluded`, such as tiles
+ * that failed recently.
+ * @param {Beliefs} beliefs
+ * @param {ReadonlySet<string>} excluded  option ids, as deliverId gives them
+ * @returns {Position[]}
+ */
+export function usableDeliveryTiles(beliefs, excluded) {
+  const { map, me } = beliefs;
+  if (!map || !me) return [];
+  const loop = playableLoop(map, me, beliefs.now());
+  return map.deliveryTiles()
+    .filter(t => !loop || loop.deliveries.has(key(t.x, t.y)))
+    .filter(t => !excluded.has(deliverId(t.x, t.y)));
+}
+
+/**
  * The tiles the agent should keep to, so that it never walks into a one-way
  * trap (see GridMap.sustainableTiles): only delivery and spawn tiles from
  * which play can go on for ever. Pickups are then only offered when the

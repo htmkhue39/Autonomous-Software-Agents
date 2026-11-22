@@ -31,7 +31,9 @@ const plans = new PlanLibrary({ beliefs, client, gate, movement, log });
 const agent = new BdiAgent({ beliefs, plans, gate, replaceMargin: config.replaceMargin,
   minCommitMs: config.minCommitMs, failedGoalCooldownMs: config.failedGoalCooldownMs, coordination, log,
   optionPolicy: { strategy: config.optionStrategy, minGain: config.minNetGain, timeValuePerS: config.timeValuePerS,
-    deliveryProtection: config.deliveryProtection } });
+    deliveryProtection: config.deliveryProtection },
+  taskPlanning: config.taskPlanner === 'pddl'
+    ? { maxParcels: config.taskPlannerMaxParcels, timeoutMs: config.taskPlannerTimeoutMs } : null });
 /** @type {number | null} */
 let lastScore = null;
 client.onYou(me => {
@@ -55,5 +57,6 @@ const stop = () => {
 };
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
-log('startup', { host: config.host, mode: config.mover, optionStrategy: config.optionStrategy, minNetGain: config.minNetGain, timeValuePerS: config.timeValuePerS, deliveryProtection: config.deliveryProtection });
+log('startup', { host: config.host, mode: config.mover, optionStrategy: config.optionStrategy, minNetGain: config.minNetGain, timeValuePerS: config.timeValuePerS, deliveryProtection: config.deliveryProtection,
+  taskPlanner: config.taskPlanner, taskPlannerMaxParcels: config.taskPlannerMaxParcels, taskPlannerTimeoutMs: config.taskPlannerTimeoutMs });
 await agent.start();

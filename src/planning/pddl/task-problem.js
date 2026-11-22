@@ -60,13 +60,15 @@ const parcelName = id => `p_${id.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
  * problem small, and only those from which a delivery tile can be reached.
  * The places are the agent's tile, the parcels' tiles, and for each of these
  * the nearest of `deliveries`. Two places are linked when A* can walk from
- * the one to the other.
+ * the one to the other and the link is short enough (see taskLinks).
  * @param {{ map: GridMap, me: Position, carried: { id: string, reward: number }[], parcels: TaskParcel[],
- *   deliveries: Position[], capacity: number, paths: PathOptions, maxParcels: number }} input
+ *   deliveries: Position[], capacity: number, paths: PathOptions, maxParcels: number, nearestLinks?: number }} input
  *   `capacity` is the server's player capacity, -1 for no limit.
+ *   `nearestLinks` is how many of its nearest places each place is linked
+ *   to (see taskLinks); 0 or less links every pair.
  * @returns {TaskSpec | null}
  */
-export function buildTaskProblem({ map, me, carried, parcels, deliveries, capacity, paths, maxParcels }) {
+export function buildTaskProblem({ map, me, carried, parcels, deliveries, capacity, paths, maxParcels, nearestLinks = NEAREST_LINKS }) {
   if (deliveries.length === 0) return null;
   /** @type {Map<string, Map<string, number>>} distances by place name, from each place */
   const distances = new Map();
@@ -134,10 +136,8 @@ export function buildTaskProblem({ map, me, carried, parcels, deliveries, capaci
   const slots = Array.from({ length: slotCount }, (_, i) => `s${i + 1}`);
 
   const facts = [`(at ${placeName(me)})`];
-  for (const from of locations.keys()) {
-    const reach = /** @type {Map<string, number>} */ (distances.get(from) ?? distancesOf(/** @type {Position} */ (locations.get(from))));
-    for (const to of locations.keys()) if (to !== from && reach.has(to)) facts.push(`(link ${from} ${to})`);
-  }
+  for (const name of locations.keys()) distancesOf(/** @type {Position} */ (locations.get(name)));
+  for (const [from, to] of taskLinks(locations, distances, deliveryNames, placeName(me), nearestLinks)) facts.push(`(link ${from} ${to})`);
   for (const name of deliveryNames) facts.push(`(delivery ${name})`);
   let slot = 0;
   for (const [name, p] of parcelObjects) {
@@ -155,6 +155,116 @@ export function buildTaskProblem({ map, me, carried, parcels, deliveries, capaci
 )`;
   return { domain: DOMAIN, problem, me: { x: me.x, y: me.y }, locations, parcels: parcelObjects, slots,
     carried: carriedNames, deliveries: deliveryNames, distances };
+}
+
+/**
+ * How many of its nearest places each place is linked to by default.
+ */
+const NEAREST_LINKS = 3;
+
+/**
+ * The `go-to` links of the problem. The solver only looks for a valid plan,
+ * not the shortest, and with every pair of places linked it often walks to
+ * a far parcel and back again. So each place is linked only to its
+ * `nearest` nearest places that are not delivery tiles, and to its nearest
+ * delivery tile, and each delivery tile to its `nearest` nearest parcels.
+ * A long walk then takes several `go-to` actions, which the solver avoids.
+ * If the pruned links no longer let the agent reach every parcel and carry
+ * each one on to a delivery tile, every pair the agent can walk is linked
+ * instead, so that the problem stays solvable.
+ * @param {Map<string, Position>} locations  places by name
+ * @param {Map<string, Map<string, number>>} distances  moves from each place, by place name
+ * @param {Set<string>} deliveries  the names of the delivery tiles
+ * @param {string} start  the agent's place
+ * @param {number} nearest
+ * @returns {[string, string][]}
+ */
+function taskLinks(locations, distances, deliveries, start, nearest) {
+  const names = [...locations.keys()];
+  /** @type {[string, string][]} */
+  const all = [];
+  for (const from of names) for (const to of names) if (to !== from && distances.get(from)?.has(to)) all.push([from, to]);
+  if (nearest <= 0) return all;
+  const moves = (/** @type {string} */ from, /** @type {string} */ to) => /** @type {number} */ (distances.get(from)?.get(to));
+  /** The `count` nearest of `targets` that `from` can reach. @param {string} from @param {string[]} targets @param {number} count */
+  const nearestOf = (from, targets, count) => targets
+    .filter(to => to !== from && distances.get(from)?.has(to))
+    .sort((a, b) => moves(from, a) - moves(from, b))
+    .slice(0, count);
+  const others = names.filter(n => !deliveries.has(n));
+  const parcelPlaces = others.filter(n => n !== start);
+  /** @type {Set<string>} */
+  const kept = new Set();
+  for (const from of names) {
+    const targets = deliveries.has(from) ? nearestOf(from, parcelPlaces, nearest)
+      : [...nearestOf(from, others, nearest), ...nearestOf(from, [...deliveries], 1)];
+    for (const to of targets) kept.add(`${from} ${to}`);
+  }
+  const links = all.filter(([from, to]) => kept.has(`${from} ${to}`));
+  // Check that the pruned links still allow a plan: the agent reaches every
+  // parcel, and from every parcel some delivery tile and every other parcel.
+  /** @param {string} from */
+  const reach = from => {
+    const seen = new Set([from]);
+    const queue = [from];
+    for (let i = 0; i < queue.length; i++) {
+      for (const [a, b] of links) if (a === queue[i] && !seen.has(b)) { seen.add(b); queue.push(b); }
+    }
+    return seen;
+  };
+  const fromStart = reach(start);
+  const solvable = parcelPlaces.every(p => fromStart.has(p)) &&
+    parcelPlaces.every(p => { const r = reach(p); return [...deliveries].some(d => r.has(d)) && parcelPlaces.every(q => r.has(q)); });
+  return solvable ? links : all;
+}
+
+/**
+ * The fewest moves that deliver every parcel of the problem, found by trying
+ * every order: the measure of how far the solver's plan is from the best
+ * one. Parcels are picked up where they lie, within capacity, and delivered
+ * all at once on a delivery tile. Only for the small problems the agent
+ * builds; returns null when no order delivers them all.
+ * @param {TaskSpec} spec
+ * @returns {number | null}
+ */
+export function optimalTaskMoves(spec) {
+  const names = [...spec.parcels.keys()];
+  const placeOf = names.map(n => spec.carried.has(n) ? null : placeName(/** @type {TaskParcel} */ (spec.parcels.get(n))));
+  const all = (1 << names.length) - 1;
+  const carriedMask = names.reduce((m, n, i) => spec.carried.has(n) ? m | (1 << i) : m, 0);
+  const capacity = spec.slots.length;
+  const bits = (/** @type {number} */ m) => { let c = 0; for (; m; m &= m - 1) c++; return c; };
+  /** @type {Map<string, number>} best moves to each state: place | picked | delivered */
+  const best = new Map();
+  /** @type {{ at: string, picked: number, done: number, moves: number }[]} */
+  const queue = [{ at: placeName(spec.me), picked: carriedMask, done: 0, moves: 0 }];
+  let answer = Infinity;
+  while (queue.length) {
+    queue.sort((a, b) => a.moves - b.moves);
+    const state = /** @type {typeof queue[number]} */ (queue.shift());
+    const k = `${state.at}|${state.picked}|${state.done}`;
+    if ((best.get(k) ?? Infinity) <= state.moves) continue;
+    best.set(k, state.moves);
+    if (state.done === all) { answer = state.moves; break; }
+    const carrying = state.picked & ~state.done;
+    // Walk to a delivery tile and deliver everything carried.
+    if (carrying) {
+      for (const d of spec.deliveries) {
+        const m = d === state.at ? 0 : spec.distances.get(state.at)?.get(d);
+        if (m !== undefined) queue.push({ at: d, picked: state.picked, done: state.done | carrying, moves: state.moves + m });
+      }
+    }
+    // Walk to a parcel not yet picked up, if there is room, and take it.
+    if (bits(carrying) < capacity) {
+      names.forEach((_, i) => {
+        const place = placeOf[i];
+        if (!place || state.picked & (1 << i)) return;
+        const m = place === state.at ? 0 : spec.distances.get(state.at)?.get(place);
+        if (m !== undefined) queue.push({ at: place, picked: state.picked | (1 << i), done: state.done, moves: state.moves + m });
+      });
+    }
+  }
+  return Number.isFinite(answer) ? answer : null;
 }
 
 /**

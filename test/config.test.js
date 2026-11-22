@@ -26,6 +26,7 @@ test('with an empty environment every setting has its default', () => {
     taskPlanner: 'off',
     taskPlannerMaxParcels: 5,
     taskPlannerTimeoutMs: 10_000,
+    taskPlannerFollow: 'always',
   });
 });
 
@@ -36,6 +37,8 @@ test('TASK_PLANNER is off unless it is set to pddl, and its limits can be set', 
   const config = loadConfig({ TASK_PLANNER_MAX_PARCELS: '6', TASK_PLANNER_TIMEOUT_MS: '1500' });
   assert.equal(config.taskPlannerMaxParcels, 6);
   assert.equal(config.taskPlannerTimeoutMs, 1500);
+  assert.equal(loadConfig({ TASK_PLANNER_FOLLOW: 'better' }).taskPlannerFollow, 'better');
+  assert.throws(() => loadConfig({ TASK_PLANNER_FOLLOW: 'sometimes' }), /TASK_PLANNER_FOLLOW/);
 });
 
 test('AGENT picks the name and the matching TOKEN_<AGENT>', () => {

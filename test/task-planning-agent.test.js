@@ -72,7 +72,7 @@ test('with a single parcel the planner is not called', async () => {
   assert.ok(events.some(e => e.event === 'delivery'));
 });
 
-test('a plan worth less than the agent own choice is not followed', async () => {
+test('with follow better, a plan worth less than the agent own choice is not followed', async () => {
   // Deliver 'q' first, then come back for 'p': much longer than taking both on the way.
   const detour = [
     { action: 'go-to', args: ['l3_0', 'l2_0'] }, { action: 'pickup', args: ['p_q', 'l2_0', 's1'] },
@@ -80,9 +80,10 @@ test('a plan worth less than the agent own choice is not followed', async () => 
     { action: 'go-to', args: ['l0_0', 'l1_0'] }, { action: 'pickup', args: ['p_p', 'l1_0', 's1'] },
     { action: 'go-to', args: ['l1_0', 'l0_0'] }, { action: 'deliver', args: ['p_p', 'l0_0', 's1'] },
   ];
-  const events = await run({ maxParcels: 5, timeoutMs: 200, solve: async () => detour });
+  const events = await run({ maxParcels: 5, timeoutMs: 200, follow: 'better', solve: async () => detour });
   const choice = events.find(e => e.event === 'pddl_task_choice');
   assert.equal(choice.adopted, false);
+  assert.equal(choice.follow, 'better');
   assert.ok(choice.planFirstTrip < choice.netGainUtility);
   // The same parcels are not planned for again.
   assert.equal(events.filter(e => e.event === 'pddl_task_call').length, 1);
@@ -92,4 +93,23 @@ test('without the task planner nothing changes and nothing is logged for it', as
   const events = await run(null);
   assert.equal(events.some(e => e.event.startsWith('pddl_task')), false);
   assert.ok(events.some(e => e.event === 'delivery'));
+});
+
+test('with follow always, the plan is carried out even when the agent would do better', async () => {
+  // Deliver 'q' first, then fetch 'p': 7 moves, where taking both on the way takes 3.
+  const detour = [
+    { action: 'go-to', args: ['l3_0', 'l2_0'] }, { action: 'pickup', args: ['p_q', 'l2_0', 's1'] },
+    { action: 'go-to', args: ['l2_0', 'l0_0'] }, { action: 'deliver', args: ['p_q', 'l0_0', 's1'] },
+    { action: 'go-to', args: ['l0_0', 'l1_0'] }, { action: 'pickup', args: ['p_p', 'l1_0', 's1'] },
+    { action: 'go-to', args: ['l1_0', 'l0_0'] }, { action: 'deliver', args: ['p_p', 'l0_0', 's1'] },
+  ];
+  const events = await run({ maxParcels: 5, timeoutMs: 200, solve: async () => detour });
+  const choice = events.find(e => e.event === 'pddl_task_choice');
+  assert.equal(choice.adopted, true);
+  assert.equal(choice.follow, 'always');
+  assert.equal(choice.planMoves, 1 + 2 + 1 + 1);
+  assert.equal(choice.optimalMoves, 3);
+  // The planner's order: 'q' is delivered alone, before 'p' is picked up.
+  assert.deepEqual(events.find(e => e.event === 'delivery').parcelIds, ['q']);
+  assert.equal(events.find(e => e.event === 'intention_activated').source, 'pddl_task');
 });

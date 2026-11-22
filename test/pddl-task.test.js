@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mapFromRows } from './helpers.js';
-import { buildTaskProblem, decodeTaskPlan, evaluateTaskPlan, firstTask } from '../src/planning/pddl/task-problem.js';
+import { buildTaskProblem, decodeTaskPlan, evaluateTaskPlan, firstTask, optimalTaskMoves } from '../src/planning/pddl/task-problem.js';
 import { solveTasks } from '../src/planning/pddl/solve.js';
 
 // A delivery tile at x 0, the agent at x 1, parcels at x 2 and x 3.
@@ -121,4 +121,30 @@ test('a timeout, an error or an invalid plan is reported as pddl_task_failure', 
     assert.deepEqual(events.map(e => e.event), ['pddl_task_call', 'pddl_task_failure']);
     assert.ok(events[1].reason);
   }
+});
+
+test('the fewest moves to deliver every parcel are found by trying every order', () => {
+  // Both parcels on the way out: 1 + 1 + 3 moves.
+  assert.equal(optimalTaskMoves(build()), 5);
+  // With room for one parcel: 1 to a, 2 back, 3 to b, 3 back.
+  assert.equal(optimalTaskMoves(build({ capacity: 1 })), 9);
+});
+
+test('each place is linked only to its nearest places, while the problem stays solvable', () => {
+  // A row of parcels: with two nearest links each, far jumps are left out.
+  const row = mapFromRows(['2333333']);
+  const parcels = [2, 3, 4, 5, 6].map(x => ({ id: `q${x}`, x, y: 0, reward: 10 }));
+  const spec = buildTaskProblem({ map: row, me: { x: 1, y: 0 }, carried: [], parcels, deliveries: [{ x: 0, y: 0 }],
+    capacity: 5, paths: { now: 0 }, maxParcels: 5, nearestLinks: 2 });
+  assert.doesNotMatch(spec.problem, /\(link l1_0 l6_0\)/);
+  assert.match(spec.problem, /\(link l1_0 l2_0\)/);
+  // With one link each, a tile could only link back the way it came and the
+  // far parcels could not be reached, so every pair is linked instead.
+  const tight = buildTaskProblem({ map: row, me: { x: 1, y: 0 }, carried: [], parcels, deliveries: [{ x: 0, y: 0 }],
+    capacity: 5, paths: { now: 0 }, maxParcels: 5, nearestLinks: 1 });
+  assert.match(tight.problem, /\(link l2_0 l3_0\)/);
+  // Every pair is linked when asked for.
+  const full = buildTaskProblem({ map: row, me: { x: 1, y: 0 }, carried: [], parcels, deliveries: [{ x: 0, y: 0 }],
+    capacity: 5, paths: { now: 0 }, maxParcels: 5, nearestLinks: 0 });
+  assert.match(full.problem, /\(link l1_0 l6_0\)/);
 });

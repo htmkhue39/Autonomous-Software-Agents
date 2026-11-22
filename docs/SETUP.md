@@ -68,9 +68,10 @@ With two parcels or more involved, the agent asks the external solver for the or
 |---|---|---|
 | `TASK_PLANNER` | `off` | `pddl` turns the task planner on; `off` keeps the agent's own choices |
 | `TASK_PLANNER_MAX_PARCELS` | `5` | the most free parcels in one task problem, the nearest first |
+| `TASK_PLANNER_FOLLOW` | `always` | `always` carries out every valid plan as the planner returned it; `better` only one worth at least the agent's own choice |
 | `TASK_PLANNER_TIMEOUT_MS` | `10000` | how long to wait for a plan before going on without it; the online solver took about 6-7 s per call in our tests |
 
-Look for `pddl_task_call`, then `pddl_task_success` or `pddl_task_failure` (with `reason`), each with `durationMs`, and `pddl_task_choice`, which shows whether the plan was followed (`adopted`) and what it was worth (`planFirstTrip`) against the agent's own choice (`netGainUtility`). Intentions taken from the plan are logged with `source: 'pddl_task'`.
+Look for `pddl_task_call`, then `pddl_task_success` or `pddl_task_failure` (with `reason`), each with `durationMs`, and `pddl_task_choice`, which shows whether the plan was followed (`adopted`), what it was worth (`planFirstTrip`) against the agent's own choice (`netGainUtility`), and how many moves it takes (`planMoves`) against the fewest any order would take (`optimalMoves`). Intentions taken from the plan are logged with `source: 'pddl_task'`.
 
 **LLM standalone:**
 

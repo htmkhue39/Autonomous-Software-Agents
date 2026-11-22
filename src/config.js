@@ -41,7 +41,20 @@ export function loadConfig(env) {
     taskPlanner: taskPlanner(env),                             // 'pddl' asks the PDDL task planner for the order of pickups and deliveries
     taskPlannerMaxParcels: Math.floor(num('TASK_PLANNER_MAX_PARCELS', 5)), // the most free parcels in one task problem, the nearest first
     taskPlannerTimeoutMs: num('TASK_PLANNER_TIMEOUT_MS', 10_000), // how long to wait for a task plan; the online solver takes about 6-7 s
+    taskPlannerFollow: taskPlannerFollow(env),                 // 'always' carries out every valid task plan; 'better' only one worth at least the agent's own choice
   };
+}
+
+/**
+ * TASK_PLANNER_FOLLOW is 'always' unless it is set to 'better'.
+ * @param {Record<string, string | undefined>} env
+ * @returns {'always' | 'better'}
+ */
+function taskPlannerFollow(env) {
+  const raw = env.TASK_PLANNER_FOLLOW;
+  if (raw === undefined || raw === '' || raw === 'always') return 'always';
+  if (raw === 'better') return 'better';
+  throw new Error(`TASK_PLANNER_FOLLOW must be always or better, got '${raw}'`);
 }
 
 /**

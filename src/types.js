@@ -164,6 +164,7 @@
  * @property {'off' | 'pddl'} taskPlanner  whether the PDDL task planner orders pickups and deliveries
  * @property {number} taskPlannerMaxParcels  the most free parcels in one task problem
  * @property {number} taskPlannerTimeoutMs  how long to wait for a task plan
+ * @property {'always' | 'better'} taskPlannerFollow  whether every valid task plan is carried out, or only one worth at least the agent's own choice
  * @property {number} actionTimeoutMs
  * @property {'baseline' | 'net_gain'} optionStrategy  how pickups are weighed against delivering
  * @property {number} minNetGain  with net_gain, the fewest extra points a switch of goal must earn

@@ -1,5 +1,5 @@
 import { deliverId, listOptions, usableDeliveryTiles } from '../deliberation/options.js';
-import { buildTaskProblem, evaluateTaskPlan } from '../planning/pddl/task-problem.js';
+import { buildTaskProblem, evaluateTaskPlan, optimalTaskMoves } from '../planning/pddl/task-problem.js';
 import { solveTasks } from '../planning/pddl/solve.js';
 import { EarningRate, priorEarningRate } from '../deliberation/rate.js';
 import { reconsider } from './revision.js';
@@ -45,7 +45,7 @@ export class BdiAgent {
    * idleMs?:number, minCommitMs?:number, failedGoalCooldownMs?:number,
    * now?:()=>number, coordination?:import('../coordination/controller.js').CoordinationController|null,
    * optionPolicy?:{ strategy?:'baseline'|'net_gain', minGain?:number, deliveryProtection?:number, timeValuePerS?:number|null },
-   * taskPlanning?:{ maxParcels:number, timeoutMs:number, solve?:typeof import('../planning/pddl/solve.js').courseSolver } | null }} options
+   * taskPlanning?:{ maxParcels:number, timeoutMs:number, follow?:'always'|'better', solve?:typeof import('../planning/pddl/solve.js').courseSolver } | null }} options
    *   `optionPolicy` chooses how pickups are weighed against delivering (see listOptions).
    *   With the 'net_gain' strategy, switching intentions follows the score
    *   alone: another goal replaces the current one as soon as it is worth at
@@ -216,10 +216,13 @@ export class BdiAgent {
    * After a failure, or a plan that lost to the agent's own choice, the
    * planner is asked again only once a parcel it did not know of appears.
    *
-   * The online solver only finds a valid order, not the shortest, so its plan
-   * is scored by the agent's own utility (evaluateTaskPlan). It is followed
-   * only when its first trip is worth at least what `best` is; both values
-   * are logged as 'pddl_task_choice'. Delivering on the tile the agent stands
+   * The agent then carries out the plan, as the planner returned it. With
+   * `follow: 'better'` it does so only when the plan's first trip is worth at
+   * least what `best` is, since the online solver only finds a valid order,
+   * not the shortest. Either way the plan is scored by the agent's own
+   * utility (evaluateTaskPlan), and both values are logged as
+   * 'pddl_task_choice', with the plan's moves and the fewest moves any order
+   * would take. Delivering on the tile the agent stands
    * on is a reflex and never waits for the planner.
    * @param {import('../types.js').Option} best
    * @param {import('../types.js').Option[]} options
@@ -257,9 +260,12 @@ export class BdiAgent {
     const plan = { tasks, seen: new Set([...free, ...carried].map(p => p.id)) };
     // The parcels may have moved on while the planner thought: check the plan against them now.
     const next = this.#nextPlannedOption(plan, this.#availableOptions(), this.beliefs.parcels.free(this.beliefs.now()), this.beliefs.parcels.carriedBy(me.id, this.beliefs.now()));
-    const adopted = next !== null && value.firstTrip >= best.utility;
-    this.log('pddl_task_choice', { adopted, next: next?.id ?? null, netGainChoice: best.id,
-      planFirstTrip: value.firstTrip, planTotal: value.total, netGainUtility: best.utility });
+    const follow = planning.follow ?? 'always';
+    const adopted = next !== null && (follow === 'always' || value.firstTrip >= best.utility);
+    const planMoves = tasks.reduce((sum, t) => sum + (t.type === 'goto' ? t.moves : 0), 0);
+    this.log('pddl_task_choice', { adopted, follow, next: next?.id ?? null, netGainChoice: best.id,
+      planFirstTrip: value.firstTrip, planTotal: value.total, netGainUtility: best.utility,
+      planMoves, optimalMoves: optimalTaskMoves(spec) });
     if (!adopted) { this.taskDeclined = known; return null; }
     this.taskDeclined = null;
     this.taskPlan = plan;

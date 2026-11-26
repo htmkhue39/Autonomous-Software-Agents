@@ -11,6 +11,7 @@ import { attachMcpCatalog } from './course/catalog.js';
 import { ObjectiveInbox, parseObjectiveLine } from './course/objective-inbox.js';
 import { createInterface } from 'node:readline';
 import { createGameRuntime, waitForGameReady } from './llm/game/runtime.js';
+import { PlannerService } from './planning/pddl/service.js';
 import { CoordinationController } from './coordination/controller.js';
 import { runContinuousBenchmark } from './benchmark/continuous.js';
 
@@ -61,12 +62,15 @@ const mode = requestedMode === 'json' ? 'json' : 'native';
 const deliveryEvacuationSetting = process.env.LLM_DELIVERY_EVACUATION ?? (coordination ? 'true' : 'false');
 if (!['true', 'false'].includes(deliveryEvacuationSetting)) throw new Error('LLM_DELIVERY_EVACUATION must be true or false');
 const deliveryEvacuation = deliveryEvacuationSetting === 'true';
+const planner = config.planner === 'online' ? new PlannerService({ timeoutMs: config.pddlTimeoutMs,
+  breakerFailures: config.pddlBreakerFailures, breakerCooldownMs: config.pddlBreakerCooldownMs,
+  maxConcurrent: config.pddlMaxConcurrent, log }) : null;
 const runtime = createGameRuntime({ beliefs, client, provider, mode,
-  mover: config.mover,
+  planner, planArchiveSize: config.planArchiveSize,
   maxSteps: integerEnv('LLM_MAX_STEPS', 18), maxToolCalls: integerEnv('LLM_MAX_TOOL_CALLS', 20),
   toolTimeoutMs: integerEnv('LLM_TOOL_TIMEOUT_MS', 60_000),
   actionTimeoutMs: config.actionTimeoutMs, maxMoveRetries: config.maxMoveRetries,
-  pddlTimeoutMs: config.pddlTimeoutMs, congestionTimeoutMs: config.congestionTimeoutMs,
+  congestionTimeoutMs: config.congestionTimeoutMs,
   congestionRetryMs: config.congestionRetryMs, coordination, deliveryEvacuation, log });
 let stopping = false;
 const abort = new AbortController();
@@ -79,7 +83,7 @@ client.socket.on('disconnect', (/** @type {string} */ reason) => {
 client.socket.on('token', (/** @type {string} */ token) => {
   log('token_issued', { tokenReceived: !!token, note: 'Create/save TOKEN_MILKTEA locally; the JWT is deliberately never logged' });
 });
-log('llm_game_startup', { host: config.host, agent: 'milktea', mode, llmProvider: llmProviderName, mover: config.mover, objective, deliveryEvacuation });
+log('llm_game_startup', { host: config.host, agent: 'milktea', mode, llmProvider: llmProviderName, planner: config.planner, objective, deliveryEvacuation });
 try {
   await waitForGameReady(beliefs, { timeoutMs: integerEnv('GAME_READY_TIMEOUT_MS', 20_000), signal: abort.signal });
   log('llm_game_ready', { x: beliefs.me?.x, y: beliefs.me?.y, score: beliefs.me?.score, level: beliefs.config?.GAME.title });

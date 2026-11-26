@@ -1,6 +1,7 @@
 import { ActionGate } from '../../plans/action-gate.js';
 import { MovementRunner } from '../../plans/moveTo.js';
 import { PlanLibrary } from '../../plans/library.js';
+import { PlanArchive } from '../../plans/archive.js';
 import { WorkingMemory } from '../memory.js';
 import { PlanActLoop } from '../agent.js';
 import { gameObservation } from './observations.js';
@@ -16,18 +17,19 @@ import { createGameTools } from './tools.js';
  * beliefs:import('../../beliefs/index.js').Beliefs,
  * client:import('../../types.js').Client,
  * provider:import('../agent.js').LlmProvider,
- * mode?:'native'|'json', mover?:'astar'|'pddl',
+ * mode?:'native'|'json',
+ * planner?:import('../../planning/pddl/service.js').PlannerService|null, planArchiveSize?:number,
  * maxSteps?:number,maxToolCalls?:number,toolTimeoutMs?:number,
- * actionTimeoutMs?:number,maxMoveRetries?:number,pddlTimeoutMs?:number,
+ * actionTimeoutMs?:number,maxMoveRetries?:number,
  * congestionTimeoutMs?:number,congestionRetryMs?:number,
  * coordination?:import('../../coordination/controller.js').CoordinationController|null,
  * deliveryEvacuation?:boolean,
  * log?:(name:string,details:object)=>void
  * }} setup
  */
-export function createGameRuntime({ beliefs, client, provider, mode = 'native', mover = 'astar',
+export function createGameRuntime({ beliefs, client, provider, mode = 'native', planner = null, planArchiveSize = 500,
   maxSteps = 18, maxToolCalls = 20, toolTimeoutMs = 60_000, actionTimeoutMs = 8000,
-  maxMoveRetries = 3, pddlTimeoutMs = 5000, congestionTimeoutMs = 3500, congestionRetryMs = 180,
+  maxMoveRetries = 3, congestionTimeoutMs = 3500, congestionRetryMs = 180,
   coordination = null, deliveryEvacuation = false, log = () => {} }) {
   const progress = new GameProgress(beliefs);
   const write = (/** @type {string} */ event, /** @type {object} */ details) => {
@@ -35,9 +37,10 @@ export function createGameRuntime({ beliefs, client, provider, mode = 'native', 
     log(event, details);
   };
   const gate = new ActionGate({ timeoutMs: actionTimeoutMs, minimumMs: () => beliefs.atLeastMoves(0, 4) });
-  const movement = new MovementRunner({ beliefs, client, gate, mode: mover, pddlTimeoutMs, maxMoveRetries,
+  const movement = new MovementRunner({ beliefs, client, gate, maxMoveRetries,
     congestionTimeoutMs, congestionRetryMs, log: write });
-  const plans = new PlanLibrary({ beliefs, client, gate, movement, log: write, deliverOnTheWay: true });
+  const plans = new PlanLibrary({ beliefs, client, gate, movement, log: write, deliverOnTheWay: true,
+    planner, archive: new PlanArchive({ size: planArchiveSize }) });
   const memory = new WorkingMemory({ maxEvents: 14, maxTextLength: 5500, observationTtlMs: 30_000 });
   const cooldowns = new Map();
   /** @type {ReturnType<typeof parseGameObjective>} */

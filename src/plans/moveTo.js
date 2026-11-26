@@ -1,5 +1,4 @@
 import { findPath, findPushingPath, stepWithCrates } from '../planning/astar.js';
-import { solveNavigation } from '../planning/pddl/solve.js';
 import { DIRS, key } from '../beliefs/map.js';
 
 const sleep = (/** @type {number} */ ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -7,32 +6,28 @@ const sleep = (/** @type {number} */ ms) => new Promise(resolve => setTimeout(re
 /** An action executor that supports cancellation between moves, rejects
  * overlapping actions, and preserves UNKNOWN results without blind retries.
  *
- * The first route of each call comes from the configured planner, so in
- * 'pddl' mode the external planner runs when an intention is activated.
- * After that, the route is checked again before every move with A*, which
- * takes about a millisecond. The agent switches to a new A* route at once
- * when a tile on the rest of its route becomes blocked or occupied, or when
- * a strictly shorter route has opened up. Each switch is logged as 'replan'.
+ * The route is given by the caller (the Plan Library, from a PDDL plan) or,
+ * when none is given, found with A*. The caller may also hand over a new
+ * route during the walk through `takeRoute`. Whatever its source, the route
+ * is checked again before every move with A*, which takes about a
+ * millisecond. The agent switches to a new A* route at once when a tile on
+ * the rest of its route becomes blocked or occupied, or when a strictly
+ * shorter route has opened up. Each switch is logged as 'replan'.
  */
 export class MovementRunner {
   /**
    * @param {{ beliefs: import('../beliefs/index.js').Beliefs, client: import('../types.js').Client,
-   * gate: import('./action-gate.js').ActionGate, mode?: 'astar'|'pddl',
-   * solve?: typeof import('../planning/pddl/solve.js').courseSolver,
-   * pddlTimeoutMs?: number, maxMoveRetries?: number,
+   * gate: import('./action-gate.js').ActionGate, maxMoveRetries?: number,
    * congestionTimeoutMs?:number, congestionRetryMs?:number, yieldAfterWaits?:number,
    * log?: (type:string,details:object)=>void }} config
    *   `yieldAfterWaits` is how many waits for a blocking agent pass before
    *   the agent steps aside to let it through (see stepAside).
    */
-  constructor({ beliefs, client, gate, mode = 'pddl', solve, pddlTimeoutMs = 5000, maxMoveRetries = 3,
+  constructor({ beliefs, client, gate, maxMoveRetries = 3,
     congestionTimeoutMs = 3500, congestionRetryMs = 180, yieldAfterWaits = 3, log = () => {} }) {
     this.beliefs = beliefs;
     this.client = client;
     this.gate = gate;
-    this.mode = mode;
-    this.solve = solve;
-    this.pddlTimeoutMs = pddlTimeoutMs;
     this.maxMoveRetries = maxMoveRetries;
     this.congestionTimeoutMs = Math.max(0, congestionTimeoutMs);
     this.congestionRetryMs = Math.max(20, congestionRetryMs);
@@ -43,13 +38,20 @@ export class MovementRunner {
   /**
    * @param {import('../types.js').Position} target
    * @param {import('../types.js').StopSignal} signal
+   * @param {{ route?: import('../types.js').Direction[] | null,
+   *   takeRoute?: (() => import('../types.js').Direction[] | null) | null,
+   *   onReplaced?: ((reason: string) => void) | null }} [given]
+   *   `route` is followed instead of an A* route from the start. `takeRoute`
+   *   is asked before every move; a route it returns replaces the rest of
+   *   the current one, from the agent's tile. `onReplaced` is told when A*
+   *   replaces a route that came from the caller, with the reason.
    * @returns {Promise<{status:'completed'|'failed'|'cancelled'|'unknown', reason?:string}>}
    */
-  async moveTo(target, signal) {
+  async moveTo(target, signal, { route = null, takeRoute = null, onReplaced = null } = {}) {
     /** @type {import('../types.js').Direction[] | null} */
-    let planned = null;
-    // The external planner is asked once per call, for the first route.
-    let plannerCalled = false;
+    let planned = route ? [...route] : null;
+    // Whether the route being followed is the caller's.
+    let callers = !!route;
     let retries = 0;
     let movesCompleted = 0;
     /** @type {number|null} */ let congestionStarted = null;
@@ -71,6 +73,8 @@ export class MovementRunner {
       if (me.x === target.x && me.y === target.y) return { status: 'completed' };
       const now = this.beliefs.now();
       const paths = { now, occupied: this.beliefs.agents.occupied(now) };
+      const handed = takeRoute?.();
+      if (handed) { planned = [...handed]; callers = true; }
       if (planned?.length) {
         // Check the rest of the route against the latest beliefs. A blocked
         // route is replaced by the best one there is, pushing crates if need
@@ -83,14 +87,9 @@ export class MovementRunner {
         if (reason) {
           this.log('replan', { reason, planner: 'astar', from: { x: me.x, y: me.y }, target,
             previousMoves: planned.length, moves: fresh?.length ?? null });
+          if (callers) { callers = false; onReplaced?.(reason); }
           planned = fresh;
         }
-      } else if (this.mode === 'pddl' && !plannerCalled) {
-        // Do not spend seconds calling an external solver when A* can already
-        // prove there is no route with the current occupied tiles. If a route
-        // exists, PDDL still performs the actual planning as required.
-        if (findPath(map, me, target, paths) === null) planned = null;
-        else { plannerCalled = true; planned = await this.route(me, target, paths); }
       } else {
         planned = workingRoute(map, me, target, paths);
       }
@@ -198,29 +197,6 @@ export class MovementRunner {
       retries = 0;
     }
     return { status: 'failed', reason: 'Navigation action budget exceeded' };
-  }
-
-  /** @param {import('../types.js').Position} from
-   * @param {import('../types.js').Position} to
-   * @param {import('../types.js').PathOptions} options
-   */
-  async route(from, to, options) {
-    if (this.mode === 'pddl') {
-      try {
-        const map = this.beliefs.map;
-        if (!map) throw new Error('Map is not ready');
-        return await solveNavigation(map, from, to, options, {
-          solve: this.solve,
-          timeoutMs: this.pddlTimeoutMs,
-          log: this.log,
-        });
-      } catch (error) {
-        this.log('planner_fallback', { reason: String(error instanceof Error ? error.message : error), from, to, fallback: 'astar' });
-      }
-    }
-    const map = this.beliefs.map;
-    if (!map) return null;
-    return findPath(map, from, to, options);
   }
 }
 

@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runContinuousBenchmark, abortablePause } from '../src/benchmark/continuous.js';
 import { parseAgentLog, buildTrialSummary, aggregateRounds, asCsv, MODES } from '../src/benchmark/results.js';
-import { parseBenchmarkArgs, scheduleRounds, isPortOpen, waitForServer, runBenchmarks } from '../src/benchmark/runner.js';
+import { parseBenchmarkArgs, scheduleRounds, isPortOpen, waitForServer, runBenchmarks, benchmarkAgentEnv } from '../src/benchmark/runner.js';
 
 const makeEvent = (event, detail = {}, at = '2026-11-12T14:00:00.000Z') => JSON.stringify({timestamp:at,event,...detail});
 
@@ -184,4 +184,18 @@ test('Stage 3A: model and tool events from an unfinished objective count toward 
   assert.equal(measured.toolCalls,1);
   assert.equal(measured.successfulTools,1);
   assert.equal(measured.completedObjectives,0);
+});
+
+test('benchmark agents get PLANNER from --mover, whatever the local .env says', () => {
+  const base = { PLANNER: 'online', MOVER: 'pddl' };
+  const astar = benchmarkAgentEnv(base, { host: 'http://localhost:8080', name: 'bubble', mover: 'astar',
+    coordination: false, deadlineAt: 0, evacuation: null });
+  assert.equal(astar.PLANNER, 'disabled');
+  assert.equal(astar.MOVER, 'astar');
+  const pddl = benchmarkAgentEnv({}, { host: 'h', name: 'bubble', mover: 'pddl', coordination: false, deadlineAt: 0, evacuation: null });
+  assert.equal(pddl.PLANNER, 'online');
+  const llm = benchmarkAgentEnv({}, { host: 'h', name: 'milktea', mover: 'astar', coordination: true, deadlineAt: 5, evacuation: false });
+  assert.equal(llm.LLM_MODE, 'json');
+  assert.equal(llm.LLM_DELIVERY_EVACUATION, 'false');
+  assert.equal(llm.COORDINATION_ENABLED, 'true');
 });

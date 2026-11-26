@@ -7,7 +7,7 @@ import { PlanLibrary } from '../src/plans/library.js';
 import { DIRS } from '../src/beliefs/map.js';
 
 /** Small deterministic simulator for integration tests; not the official game. */
-export function stage1World({ rows = ['2133'], x = 3, capacity = 2, mode = 'astar', solve, log = () => {} } = {}) {
+export function stage1World({ rows = ['2133'], x = 3, capacity = 2, log = () => {} } = {}) {
   const beliefs = new Beliefs({ now: () => 0, agentTtlMs: 3000, blockedTtlMs: 10, maxBlockedMs: 100 });
   beliefs.onConfig({ CLOCK: 50, PENALTY: 1, AGENT_TIMEOUT: 10000, GAME: {
     title: 'test', description: '',
@@ -38,7 +38,7 @@ export function stage1World({ rows = ['2133'], x = 3, capacity = 2, mode = 'asta
     },
   };
   const gate = new ActionGate({ timeoutMs: 1000 });
-  const movement = new MovementRunner({ beliefs, client, gate, mode, solve, pddlTimeoutMs: 200, maxMoveRetries: 1, log });
+  const movement = new MovementRunner({ beliefs, client, gate, maxMoveRetries: 1, log });
   const plans = new PlanLibrary({ beliefs, client, gate, movement, log });
   return { beliefs, client, gate, movement, plans, send, events, setRejectMove(fn) { rejectMove = fn; } };
 }

@@ -1,8 +1,6 @@
-import { deliverId, listOptions, usableDeliveryTiles } from '../deliberation/options.js';
-import { buildTaskProblem, evaluateTaskPlan, optimalTaskMoves } from '../planning/pddl/task-problem.js';
-import { solveTasks } from '../planning/pddl/solve.js';
+import { deliverId, listOptions } from '../deliberation/options.js';
 import { EarningRate, priorEarningRate } from '../deliberation/rate.js';
-import { reconsider } from './revision.js';
+import { reconsider, tripAsDelivery } from './revision.js';
 import { decayIntervalMs } from '../beliefs/parcels.js';
 
 const sleep = (/** @type {number} */ ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -34,18 +32,17 @@ export function failureKind(option, outcome) {
 
 /**
  * Single-task BDI controller. Reconsiders on new beliefs but never starts a
- * second plan before the previous plan exits. Each activated intention calls
- * the movement planner when its plan begins.
+ * second plan before the previous plan exits. Each activated intention goes
+ * to the Plan Library, which plans it (with the PDDL planner when it is on).
  */
 export class BdiAgent {
   /** @param {{ beliefs:import('../beliefs/index.js').Beliefs,
    * plans:import('../plans/library.js').PlanLibrary,
    * gate:import('../plans/action-gate.js').ActionGate,
    * replaceMargin?:number, log?:(type:string,details:object)=>void,
-   * idleMs?:number, minCommitMs?:number, failedGoalCooldownMs?:number,
+   * idleMs?:number, minIntentionMs?:number, minCommitMs?:number, failedGoalCooldownMs?:number,
    * now?:()=>number, coordination?:import('../coordination/controller.js').CoordinationController|null,
-   * optionPolicy?:{ strategy?:'baseline'|'net_gain', minGain?:number, deliveryProtection?:number, timeValuePerS?:number|null },
-   * taskPlanning?:{ maxParcels:number, timeoutMs:number, follow?:'always'|'better', solve?:typeof import('../planning/pddl/solve.js').courseSolver } | null }} options
+   * optionPolicy?:{ strategy?:'baseline'|'net_gain', minGain?:number, deliveryProtection?:number, timeValuePerS?:number|null } }} options
    *   `optionPolicy` chooses how pickups are weighed against delivering (see listOptions).
    *   With the 'net_gain' strategy, switching intentions follows the score
    *   alone: another goal replaces the current one as soon as it is worth at
@@ -54,19 +51,10 @@ export class BdiAgent {
    *   its time at `timeValuePerS` points per second when that is set, and
    *   otherwise at the agent's own earning rate, learned from its score.
    *   `deliveryProtection` lets a pickup give way to delivering on a smaller
-   *   gain than `minGain` (see reconsider).
-   *   `taskPlanning`, when given, asks the PDDL task planner for the order
-   *   of pickups and deliveries whenever two parcels or more are involved
-   *   (see #taskChoice). Left out, the agent chooses as before. */
-  constructor({ beliefs, plans, gate, replaceMargin = 1.2, log = () => {}, idleMs = 200,
-    minCommitMs = 6000, failedGoalCooldownMs = 10000, now = Date.now, coordination = null, optionPolicy = {},
-    taskPlanning = null }) {
+   *   gain than `minGain` (see reconsider). */
+  constructor({ beliefs, plans, gate, replaceMargin = 1.2, log = () => {}, idleMs = 200, minIntentionMs = 50,
+    minCommitMs = 6000, failedGoalCooldownMs = 10000, now = Date.now, coordination = null, optionPolicy = {}}) {
     this.beliefs = beliefs;
-    this.taskPlanning = taskPlanning;
-    /** @type {{ tasks: import('../planning/pddl/task-problem.js').Task[], seen: Set<string> } | null} the plan being followed */
-    this.taskPlan = null;
-    /** @type {Set<string> | null} the parcels known when the planner last failed or lost to the agent's own choice */
-    this.taskDeclined = null;
     this.optionPolicy = optionPolicy;
     /** @type {EarningRate | null} created once the map and game settings are known */
     this.earningRate = null;
@@ -82,6 +70,7 @@ export class BdiAgent {
     this.replaceMargin = replaceMargin;
     this.log = log;
     this.idleMs = idleMs;
+    this.minIntentionMs = minIntentionMs;
     this.minCommitMs = minCommitMs;
     this.failedGoalCooldownMs = failedGoalCooldownMs;
     this.now = now;
@@ -112,7 +101,9 @@ export class BdiAgent {
         this.log('intention_revision', { from: active.id, to: null, reason: 'invalidated' });
         return;
       }
-      const options = this.#availableOptions(active.id);
+      const carried = active.parcelId !== undefined && this.beliefs.me !== undefined &&
+        this.beliefs.parcels.get(active.parcelId, this.beliefs.now())?.carriedBy === this.beliefs.me.id;
+      const options = tripAsDelivery(active, this.#availableOptions(active.id), carried);
       // Preserve an applicable active goal even if the option generator no
       // longer ranks it (e.g. an explored tile lost its 'oldest' ranking).
       if (!options.some(option => option.id === active.id)) {
@@ -203,105 +194,31 @@ export class BdiAgent {
   }
 
   /**
-   * The option the PDDL task plan says to do next, or null to keep `best`,
-   * the agent's own choice.
-   *
-   * With two parcels or more involved (carried ones included), the order of
-   * pickups and deliveries is a planning problem (task-problem.js). A plan
-   * found earlier is followed while its next step is still available and no
-   * new parcel has come into reach; otherwise the planner is asked again.
-   * One parcel has only one order, so then the planner is not asked. When it
-   * fails, times out or returns a plan that does not check out, the agent
-   * keeps its own choice; solveTasks logs 'pddl_task_failure' with the reason.
-   * After a failure, or a plan that lost to the agent's own choice, the
-   * planner is asked again only once a parcel it did not know of appears.
-   *
-   * The agent then carries out the plan, as the planner returned it. With
-   * `follow: 'better'` it does so only when the plan's first trip is worth at
-   * least what `best` is, since the online solver only finds a valid order,
-   * not the shortest. Either way the plan is scored by the agent's own
-   * utility (evaluateTaskPlan), and both values are logged as
-   * 'pddl_task_choice', with the plan's moves and the fewest moves any order
-   * would take. Delivering on the tile the agent stands
-   * on is a reflex and never waits for the planner.
-   * @param {import('../types.js').Option} best
-   * @param {import('../types.js').Option[]} options
-   * @returns {Promise<import('../types.js').Option | null>}
+   * The goal a failed intention stands for. A trip whose parcel the agent
+   * carries failed while delivering, so it stands for the delivery to its tile.
+   * @param {import('../types.js').Option} option
+   * @returns {import('../types.js').Option}
    */
-  async #taskChoice(best, options) {
-    const planning = this.taskPlanning;
-    const { config, map, me } = this.beliefs;
-    if (!planning || !config || !map || !me || best.priority > 0) return null;
-    const now = this.beliefs.now();
-    const carried = this.beliefs.parcels.carriedBy(me.id, now);
-    const free = this.beliefs.parcels.free(now).filter(p => p.reward > 0);
-
-    const following = this.taskPlan ? this.#nextPlannedOption(this.taskPlan, options, free, carried) : null;
-    if (following) return following;
-    this.taskPlan = null;
-    // Asking again about the same parcels would give the same answer, and each call takes time.
-    const known = new Set([...free, ...carried].map(p => p.id));
-    const declined = this.taskDeclined;
-    if (declined && [...known].every(id => declined.has(id))) return null;
-
-    const paths = { now, occupied: this.beliefs.agents.occupied(now) };
-    const spec = buildTaskProblem({ map, me, carried, parcels: free,
-      deliveries: usableDeliveryTiles(this.beliefs, new Set(this.failedGoals.keys())),
-      capacity: config.GAME.player.capacity, paths, maxParcels: planning.maxParcels });
-    if (!spec) return null;
-    let tasks;
-    try { tasks = await solveTasks(spec, { solve: planning.solve, timeoutMs: planning.timeoutMs, log: this.log }); }
-    catch { this.taskDeclined = known; return null; }
-
-    const rewards = new Map([...spec.parcels.values()].map(p => [p.id, p.reward]));
-    const value = evaluateTaskPlan(tasks, { rewards, now, moveMs: config.GAME.player.movement_duration,
-      decayMs: this.beliefs.parcels.decayMs, perMs: this.timeValue() });
-    // The parcels the agent knew of when it planned: only a parcel seen since then calls for a new plan.
-    const plan = { tasks, seen: new Set([...free, ...carried].map(p => p.id)) };
-    // The parcels may have moved on while the planner thought: check the plan against them now.
-    const next = this.#nextPlannedOption(plan, this.#availableOptions(), this.beliefs.parcels.free(this.beliefs.now()), this.beliefs.parcels.carriedBy(me.id, this.beliefs.now()));
-    const follow = planning.follow ?? 'always';
-    const adopted = next !== null && (follow === 'always' || value.firstTrip >= best.utility);
-    const planMoves = tasks.reduce((sum, t) => sum + (t.type === 'goto' ? t.moves : 0), 0);
-    this.log('pddl_task_choice', { adopted, follow, next: next?.id ?? null, netGainChoice: best.id,
-      planFirstTrip: value.firstTrip, planTotal: value.total, netGainUtility: best.utility,
-      planMoves, optimalMoves: optimalTaskMoves(spec) });
-    if (!adopted) { this.taskDeclined = known; return null; }
-    this.taskDeclined = null;
-    this.taskPlan = plan;
-    return next;
+  #failedPart(option) {
+    const me = this.beliefs.me;
+    if (option.type !== 'pickup' || option.deliverX === undefined || option.deliverY === undefined || !me) return option;
+    if (this.beliefs.parcels.get(option.parcelId ?? '', this.beliefs.now())?.carriedBy !== me.id) return option;
+    return { ...option, id: deliverId(option.deliverX, option.deliverY), type: 'deliver', x: option.deliverX, y: option.deliverY };
   }
 
   /**
-   * The available option that carries out the plan's next step, or null when
-   * the plan no longer fits the beliefs: a parcel it counts on is gone, a
-   * parcel the agent did not know of when it planned has come into reach, or
-   * its next step is not among the options.
-   * @param {{ tasks: import('../planning/pddl/task-problem.js').Task[], seen: Set<string> }} plan
-   * @param {import('../types.js').Option[]} options
-   * @param {import('../types.js').Parcel[]} free  free parcels now
-   * @param {import('../types.js').Parcel[]} carried  parcels the agent carries now
+   * Resolves once a sensing update newer than `count` has come, or after `maxMs`.
+   * @param {number} count  the number of sensing updates already seen
+   * @param {number} maxMs
+   * @returns {Promise<void>}
    */
-  #nextPlannedOption(plan, options, free, carried) {
-    const freeIds = new Set(free.map(p => p.id));
-    const carriedIds = new Set(carried.map(p => p.id));
-    // A parcel the plan does not know of may change the best order.
-    if ([...freeIds].some(id => !plan.seen.has(id) && options.some(o => o.parcelId === id))) return null;
-    for (const task of plan.tasks) {
-      if (task.type === 'goto') continue;
-      if (task.type === 'pickup') {
-        if (carriedIds.has(task.parcelId)) continue;
-        if (!freeIds.has(task.parcelId)) return null;
-        return options.find(o => o.type === 'pickup' && o.x === task.at.x && o.y === task.at.y) ?? null;
-      }
-      if (!carriedIds.has(task.parcelId)) {
-        // Delivered already, or lost: the plan is only still good if it was delivered.
-        if (freeIds.has(task.parcelId)) return null;
-        continue;
-      }
-      return options.find(o => o.id === deliverId(task.at.x, task.at.y)) ?? null;
-    }
-    return null;
+  #freshSensing(count, maxMs) {
+    if (this.beliefs.sensings > count) return Promise.resolve();
+    return new Promise(resolve => {
+      const done = () => { clearTimeout(timer); unsubscribe(); resolve(); };
+      const timer = setTimeout(done, maxMs);
+      const unsubscribe = this.beliefs.onChange(() => { if (this.beliefs.sensings > count) done(); });
+    });
   }
 
   stop() { this.running = false; if (this.signal) this.signal.stopped = true; this.coordination?.release(undefined, 'stopped'); }
@@ -325,9 +242,7 @@ export class BdiAgent {
         const available = this.#availableOptions();
         const decision = reconsider(null, available, this.replaceMargin);
         if (!decision.next) { await sleep(this.idleMs); continue; }
-        const planned = this.taskPlanning ? await this.#taskChoice(decision.next, available) : null;
-        if (!this.running) break;
-        const option = planned ?? decision.next;
+        const option = decision.next;
         if (option.type === 'pickup' && option.parcelId && this.coordination) {
           const acquired = await this.coordination.acquire(option.parcelId, option, { onYield: () => {
             if (this.active?.id === option.id && this.signal) this.signal.stopped = true;
@@ -344,11 +259,11 @@ export class BdiAgent {
         this.activeSince = this.now();
         /** @type {{ id:string, status:'running'|'completed'|'failed'|'cancelled', startedAt:number, endedAt:number|null, reason:string|null }} */
         const record = { id: option.id, status: 'running', startedAt: this.beliefs.now(), endedAt: null, reason: null };
+        const startedAt = Date.now();
         this.currentRecord = record;
         const signal = { stopped: false };
         this.signal = signal;
         this.log('intention_activated', { id: option.id, type: option.type, utility: option.utility, target: {x:option.x,y:option.y},
-          ...(planned ? { source: 'pddl_task' } : {}),
           ...(this.optionPolicy.strategy === 'net_gain' ? { timeValuePerS: Math.round(this.timeValue() * 1000 * 100) / 100 } : {}) });
         let outcome;
         try { outcome = await this.plans.execute(option, signal); }
@@ -364,15 +279,18 @@ export class BdiAgent {
           outcome.status === 'completed' ? 'collected' : outcome.status === 'cancelled' ? 'yielded' : 'failed');
         this.coordination?.setIntention(null);
         if (outcome.status === 'failed' || outcome.status === 'unknown') {
-          const kind = failureKind(option, outcome);
+          // A trip that failed after its pickup failed at delivering: the
+          // delivery tile is cooled down, as a delivery would be.
+          const failed = this.#failedPart(option);
+          const kind = failureKind(failed, outcome);
           if (kind === 'none') {
-            this.log('intention_failure_not_cooled', { id: option.id, reason: outcome.reason ?? outcome.status });
+            this.log('intention_failure_not_cooled', { id: failed.id, reason: outcome.reason ?? outcome.status });
           } else {
             // Never shorter than some moves of this game, whose speed may have been set by hand.
             const cooldownMs = this.beliefs.atLeastMoves(this.failedGoalCooldownMs, 20);
             const until = this.now() + cooldownMs;
-            this.failedGoals.set(option.id, { until, kind });
-            this.log('intention_cooldown', { id: option.id, reason: outcome.reason ?? outcome.status,
+            this.failedGoals.set(failed.id, { until, kind });
+            this.log('intention_cooldown', { id: failed.id, reason: outcome.reason ?? outcome.status,
               kind, cooldownMs });
           }
         } else if (outcome.status === 'completed') {
@@ -380,10 +298,24 @@ export class BdiAgent {
         }
         this.active = null;
         this.signal = null;
+        const sensedBefore = this.beliefs.sensings;
         if (outcome.status === 'unknown') this.reconciled = false;
-        // An unreachable or temporarily unavailable goal should not cause a
-        // CPU-hot retry loop. Beliefs must have a chance to change.
-        await sleep(this.idleMs);
+        if (outcome.status === 'completed' || outcome.status === 'cancelled') {
+          // Done, or replaced by a better goal: decide again as soon as the
+          // server's next sensing has come, at most two frames later, so that
+          // the next goal is chosen on what the agent sees from where it now
+          // stands (exploring otherwise picks the tile next door, step after
+          // step). An intention that ended at once also waits until
+          // minIntentionMs after it started, so that it cannot spin.
+          await Promise.all([
+            sleep(Math.max(0, this.minIntentionMs - (Date.now() - startedAt))),
+            this.#freshSensing(sensedBefore, this.beliefs.atLeastFrames(0, 2)),
+          ]);
+        } else {
+          // An unreachable or temporarily unavailable goal should not cause a
+          // CPU-hot retry loop. Beliefs must have a chance to change.
+          await sleep(this.idleMs);
+        }
       }
     } finally { this.running = false; this.log('agent_stopped', {}); }
   }

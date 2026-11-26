@@ -10,8 +10,6 @@
     "start": "node src/index.js",
     "observe": "node src/observe.js",
     "typecheck": "npx -y -p typescript@5.8.3 tsc -p jsconfig.json",
-    "path": "node src/follow-path.js",
-    "deliver": "node src/pickup-deliver.js",
     "summarize": "node scripts/summarize-run.js",
     "llm:smoke": "node scripts/llm-smoke.js",
     "llm:smoke:json": "node scripts/llm-smoke.js --json",

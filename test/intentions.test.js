@@ -1,7 +1,7 @@
 // @ts-nocheck -- test fixtures use partial fake SDK clients; runtime assertions verify behavior.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reconsider } from '../src/intentions/revision.js';
+import { reconsider, tripAsDelivery } from '../src/intentions/revision.js';
 import { BdiAgent, failureKind } from '../src/intentions/agent.js';
 import { stage1World } from './stage1-helpers.js';
 
@@ -37,7 +37,8 @@ test('BDI control loop activates goals autonomously and completes pickup/deliver
   const end = Promise.race([agent.start(), new Promise((_, reject) => setTimeout(() => reject(Error('BDI test timed out')), 1500))]);
   await end;
   assert.ok(events.some(e => e.event === 'intention_activated' && e.id === 'pickup:p'));
-  assert.ok(events.some(e => e.event === 'intention_activated' && e.id === 'deliver:0,0'));
+  // The pickup is a whole trip: the same intention delivers the parcel.
+  assert.ok(events.some(e => e.event === 'delivery'));
   assert.equal(w.beliefs.parcels.carriedBy('me', w.beliefs.now()).length, 0);
 });
 
@@ -223,4 +224,120 @@ test('a lower priority option never replaces the current one', () => {
   const here = { id: 'deliver:0,0', type: 'deliver', x: 0, y: 0, utility: 5, priority: 1 };
   const explore = { id: 'explore:1,0', type: 'explore', x: 1, y: 0, utility: 100, priority: -1 };
   assert.equal(reconsider(here, [explore, here], 1.2, { minGain: 1 }).next.id, 'deliver:0,0');
+});
+
+test('a trip goes on to deliver after its pickup instead of being replaced by a delivery', async () => {
+  // The agent at (3, 0), the parcel 'p' on (1, 0), the delivery tile on (0, 0): one trip.
+  const w = stage1World();
+  const events = [];
+  let agent;
+  const log = (type, details) => { events.push({ event: type, ...details }); if (type === 'delivery') agent.stop(); };
+  w.movement.log = log;
+  w.plans.log = log;
+  agent = new BdiAgent({ beliefs: w.beliefs, plans: w.plans, gate: w.gate, idleMs: 5, log,
+    optionPolicy: { strategy: 'net_gain', minGain: 1 } });
+  try { await Promise.race([agent.start(), new Promise((_, reject) => setTimeout(() => reject(Error('BDI test timed out')), 1500))]); }
+  finally { agent.stop(); }
+  assert.equal(events.find(e => e.event === 'intention_activated')?.id, 'pickup:p');
+  assert.equal(events.some(e => e.event === 'intention_revision' && e.from === 'pickup:p'), false);
+  assert.ok(events.some(e => e.event === 'delivery'));
+});
+
+test('after a completed intention the next one starts without the idle wait', async () => {
+  // After the first completed intention, the next one must start at once, not idleMs later.
+  const w = stage1World({ rows: ['21133'], x: 4 });
+  w.send([{ id: 'p', x: 1, y: 0, reward: 20, carriedBy: null }, { id: 'q', x: 2, y: 0, reward: 20, carriedBy: null }]);
+  const events = [];
+  let agent;
+  let completed = false;
+  const log = (type, details) => {
+    events.push({ event: type, at: Date.now(), ...details });
+    if (type === 'intention_outcome' && details.status === 'completed') completed = true;
+    else if (type === 'intention_activated' && completed) agent.stop();
+  };
+  w.movement.log = log;
+  w.plans.log = log;
+  agent = new BdiAgent({ beliefs: w.beliefs, plans: w.plans, gate: w.gate, idleMs: 1000, log,
+    optionPolicy: { strategy: 'net_gain', minGain: 1 } });
+  try { await Promise.race([agent.start(), new Promise((_, reject) => setTimeout(() => reject(Error('BDI test timed out')), 3000))]); }
+  finally { agent.stop(); }
+  const first = events.findIndex(e => e.event === 'intention_outcome' && e.status === 'completed');
+  const next = events.slice(first).find(e => e.event === 'intention_activated');
+  assert.ok(first !== -1 && next, 'two intentions ran');
+  assert.ok(next.at - events[first].at < 200, `the next intention waited ${next.at - events[first].at} ms`);
+});
+
+test('an intention that ends at once is not started again more than once every 50 ms', async () => {
+  // A plan that is cancelled the moment it starts, with nothing else to do: the loop must not spin.
+  const w = stage1World();
+  let activations = 0;
+  const plans = { applicable: () => true, execute: async () => ({ status: 'cancelled' }) };
+  const agent = new BdiAgent({ beliefs: w.beliefs, plans, gate: w.gate, idleMs: 1,
+    log: type => { if (type === 'intention_activated') activations++; } });
+  const run = agent.start();
+  await new Promise(resolve => setTimeout(resolve, 300));
+  agent.stop();
+  await run;
+  assert.ok(activations <= 7, `${activations} activations in 300 ms`);
+});
+
+test('a trip that fails on its way to deliver cools down its delivery tile', async () => {
+  // After the pickup on (1,0), every move towards the delivery tile on (0,0) is refused.
+  const w = stage1World();
+  w.setRejectMove(dir => dir === 'left' && w.beliefs.parcels.carriedBy('me', w.beliefs.now()).length > 0);
+  const events = [];
+  let agent;
+  const log = (type, details) => { events.push({ event: type, ...details }); if (type === 'intention_cooldown') agent.stop(); };
+  w.movement.log = log;
+  w.plans.log = log;
+  agent = new BdiAgent({ beliefs: w.beliefs, plans: w.plans, gate: w.gate, idleMs: 5, log,
+    optionPolicy: { strategy: 'net_gain', minGain: 1 } });
+  try { await Promise.race([agent.start(), new Promise((_, reject) => setTimeout(() => reject(Error('BDI test timed out')), 1500))]); }
+  finally { agent.stop(); }
+  const cooldown = events.find(e => e.event === 'intention_cooldown');
+  assert.equal(cooldown?.id, 'deliver:0,0');
+  assert.ok(agent.failedGoals.has('deliver:0,0'));
+  assert.equal(agent.failedGoals.has('pickup:p'), false);
+});
+
+test('after its pickup a trip is weighed as a delivery, even when its tile is not the listed one', () => {
+  const trip = { id: 'pickup:p', type: 'pickup', x: 1, y: 0, parcelId: 'p', deliverX: 0, deliverY: 0, utility: 50, priority: 0 };
+  const deliverHere = { id: 'deliver:0,0', type: 'deliver', x: 0, y: 0, utility: 20, priority: 0 };
+  const deliverElsewhere = { id: 'deliver:4,0', type: 'deliver', x: 4, y: 0, utility: 21, priority: 0 };
+  // Its own tile is listed: the trip takes that delivery's place and value.
+  const own = tripAsDelivery(trip, [deliverHere], true);
+  assert.deepEqual(own.map(o => [o.id, o.utility]), [['pickup:p', 20]]);
+  // Another tile is listed: the trip is added at that delivery's value, so it is not replaced for nothing.
+  const other = tripAsDelivery(trip, [deliverElsewhere], true);
+  assert.deepEqual(other.map(o => [o.id, o.utility]), [['deliver:4,0', 21], ['pickup:p', 21]]);
+  assert.equal(reconsider(trip, other, 1.2, { minGain: 1 }).next.id, 'pickup:p');
+  // Before the pickup nothing changes.
+  assert.deepEqual(tripAsDelivery(trip, [deliverHere], false), [deliverHere]);
+});
+
+test('after an intention the next decision waits for fresh sensing, not for the idle time', async () => {
+  // Exploring on stale beliefs picks the next tile before the server says what the agent now sees.
+  const w = stage1World();
+  const order = [];
+  let agent;
+  let completed = false;
+  const log = (type, details) => {
+    if (type === 'intention_outcome' && details.status === 'completed' && !completed) {
+      completed = true;
+      order.push({ what: 'completed', at: Date.now() });
+      // The server's next sensing comes 80 ms later, after the 50 ms floor and within two frames.
+      setTimeout(() => { order.push({ what: 'sensing', at: Date.now() }); w.send(w.beliefs.parcels.free(w.beliefs.now())); }, 80);
+    } else if (type === 'intention_activated' && completed) {
+      order.push({ what: 'activated', at: Date.now() });
+      agent.stop();
+    }
+  };
+  w.movement.log = log;
+  w.plans.log = log;
+  agent = new BdiAgent({ beliefs: w.beliefs, plans: w.plans, gate: w.gate, idleMs: 1000, log,
+    optionPolicy: { strategy: 'net_gain', minGain: 1 } });
+  try { await Promise.race([agent.start(), new Promise((_, reject) => setTimeout(() => reject(Error('BDI test timed out')), 3000))]); }
+  finally { agent.stop(); }
+  assert.deepEqual(order.map(o => o.what), ['completed', 'sensing', 'activated']);
+  assert.ok(order[2].at - order[0].at < 200, 'the next decision did not wait for the idle time');
 });

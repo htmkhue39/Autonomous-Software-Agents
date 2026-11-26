@@ -4,6 +4,8 @@ import { Beliefs } from './beliefs/index.js';
 import { ActionGate } from './plans/action-gate.js';
 import { MovementRunner } from './plans/moveTo.js';
 import { PlanLibrary } from './plans/library.js';
+import { PlanArchive } from './plans/archive.js';
+import { PlannerService } from './planning/pddl/service.js';
 import { BdiAgent } from './intentions/agent.js';
 import { logEvent } from './metrics/log.js';
 import { CoordinationController } from './coordination/controller.js';
@@ -22,18 +24,19 @@ const coordination = process.env.COORDINATION_ENABLED === 'true' ? new Coordinat
 coordination?.start();
 const gate = new ActionGate({ timeoutMs: config.actionTimeoutMs, minimumMs: () => beliefs.atLeastMoves(0, 4) });
 const movement = new MovementRunner({
-  beliefs, client, gate, mode: config.mover,
-  pddlTimeoutMs: config.pddlTimeoutMs,
+  beliefs, client, gate,
   maxMoveRetries: config.maxMoveRetries,
   congestionTimeoutMs: config.congestionTimeoutMs, congestionRetryMs: config.congestionRetryMs, log,
 });
-const plans = new PlanLibrary({ beliefs, client, gate, movement, log });
+const planner = config.planner === 'online' ? new PlannerService({ timeoutMs: config.pddlTimeoutMs,
+  breakerFailures: config.pddlBreakerFailures, breakerCooldownMs: config.pddlBreakerCooldownMs,
+  maxConcurrent: config.pddlMaxConcurrent, log }) : null;
+const plans = new PlanLibrary({ beliefs, client, gate, movement, log, planner,
+  archive: new PlanArchive({ size: config.planArchiveSize }) });
 const agent = new BdiAgent({ beliefs, plans, gate, replaceMargin: config.replaceMargin,
   minCommitMs: config.minCommitMs, failedGoalCooldownMs: config.failedGoalCooldownMs, coordination, log,
   optionPolicy: { strategy: config.optionStrategy, minGain: config.minNetGain, timeValuePerS: config.timeValuePerS,
-    deliveryProtection: config.deliveryProtection },
-  taskPlanning: config.taskPlanner === 'pddl'
-    ? { maxParcels: config.taskPlannerMaxParcels, timeoutMs: config.taskPlannerTimeoutMs, follow: config.taskPlannerFollow } : null });
+    deliveryProtection: config.deliveryProtection } });
 /** @type {number | null} */
 let lastScore = null;
 client.onYou(me => {
@@ -57,6 +60,7 @@ const stop = () => {
 };
 process.on('SIGINT', stop);
 process.on('SIGTERM', stop);
-log('startup', { host: config.host, mode: config.mover, optionStrategy: config.optionStrategy, minNetGain: config.minNetGain, timeValuePerS: config.timeValuePerS, deliveryProtection: config.deliveryProtection,
-  taskPlanner: config.taskPlanner, taskPlannerMaxParcels: config.taskPlannerMaxParcels, taskPlannerTimeoutMs: config.taskPlannerTimeoutMs, taskPlannerFollow: config.taskPlannerFollow });
+log('startup', { host: config.host, planner: config.planner, optionStrategy: config.optionStrategy, minNetGain: config.minNetGain, timeValuePerS: config.timeValuePerS, deliveryProtection: config.deliveryProtection,
+  pddlTimeoutMs: config.pddlTimeoutMs, pddlBreakerFailures: config.pddlBreakerFailures, pddlBreakerCooldownMs: config.pddlBreakerCooldownMs,
+  planArchiveSize: config.planArchiveSize });
 await agent.start();

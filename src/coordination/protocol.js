@@ -13,7 +13,8 @@ export const MAX_MESSAGE_AGE_MS = 20_000;
 const plain = (/** @type {unknown} */ x) => !!x && typeof x === 'object' && !Array.isArray(x);
 const finite = (/** @type {unknown} */ x) => typeof x === 'number' && Number.isFinite(x);
 const name = (/** @type {unknown} */ x) => typeof x === 'string' && x.length > 0 && x.length <= 128 && /^[\w.:,-]+$/.test(x);
-const pos = (/** @type {unknown} */ x) => Number.isInteger(x) && /** @type {number} */ (x) >= 0 && /** @type {number} */ (x) <= 1000;
+// Any whole tile coordinate: the map's own size is checked where a position is used.
+const pos = (/** @type {unknown} */ x) => Number.isSafeInteger(x) && /** @type {number} */ (x) >= 0;
 
 /** @param {unknown} p */
 export function isSharedParcel(p) {

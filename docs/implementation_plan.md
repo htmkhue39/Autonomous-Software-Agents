@@ -12,7 +12,7 @@ This is the task tracker for turning the agreed [design](design.md) into working
 | Belief representation/revision | `src/beliefs/*`, `src/types.js` | [x] Implemented | Preserve and test integration with actions/messages. |
 | A* navigation | `src/planning/astar.js` | [x] Implemented | Reuse; do not replace. |
 | Option generation / expected-reward utility | `src/deliberation/*` | [x] Implemented | Fix unlimited-capacity handling; preserve baseline policy. |
-| SDK smoke/demo scripts | `src/observe.js`, `src/follow-path.js`, `src/pickup-deliver.js` | [x] Present | Keep as diagnostics until replaced by reliable integration tests. |
+| SDK smoke/demo scripts | `src/observe.js` | [x] Present | Kept to obtain a token; the Lab 1 demos `follow-path.js` and `pickup-deliver.js` were removed once the agent replaced them. |
 | Autonomous movement and plans | `src/plans/` | [x] Implemented; previously verified live | Stage 1.1 pickup/movement fixes require local recheck. |
 | Intention revision and BDI run loop | `src/intentions/`, `src/index.js` | [x] Implemented and observed live | Stage 1.1 commitment/cooldown policy requires local recheck. |
 | External PDDL planning | `src/planning/pddl/` | [x] Real solver invoked and route executed on local Mac | Retest after Stage 1.1; preserve actual `pddl_success` evidence. |

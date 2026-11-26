@@ -149,6 +149,22 @@ async function waitForClosed(host, timeoutMs) {
 }
 
 /**
+ * The environment of one benchmark agent. PLANNER is set from the mover of
+ * the run as well as MOVER, because a PLANNER in a local .env would otherwise
+ * win over MOVER and turn the planner on in an A* run.
+ * @param {Record<string, string | undefined>} base  the environment to start from
+ * @param {{ host: string, name: string, mover: string, coordination: boolean, deadlineAt: number,
+ *   evacuation: boolean | null }} run  `evacuation` is set only in ablation rounds
+ */
+export function benchmarkAgentEnv(base, { host, name, mover, coordination, deadlineAt, evacuation }) {
+  const isLlm = name === 'milktea';
+  return { ...base, HOST: host, AGENT: name, MOVER: mover, PLANNER: mover === 'pddl' ? 'online' : 'disabled',
+    COORDINATION_ENABLED: String(coordination), BENCHMARK_CONTINUOUS: 'true',
+    BENCHMARK_DEADLINE_MS: String(deadlineAt),
+    ...(isLlm ? { LLM_MODE: 'json', ...(evacuation !== null ? { LLM_DELIVERY_EVACUATION: String(evacuation) } : {}) } : {}) };
+}
+
+/**
  * Spawn isolated OS process groups so npm start children also stop. This is
  * intended for macOS/Linux, matching the project's course environment.
  * @param {string} command @param {string[]} args @param {{cwd:string,env:NodeJS.ProcessEnv,logFile:string,stdin?:boolean}} options
@@ -333,10 +349,9 @@ export async function runBenchmarks(opts, signal) {
         agents[name] = startProcess(process.execPath, [join(REPO_ROOT, 'src', isLlm ? 'llm-agent.js' : 'index.js'),
           ...(isLlm ? ['--objective', 'Deliver 3 parcels'] : [])], {
           cwd: REPO_ROOT, logFile: join(roundDir, `${name}.log`),
-          env: { ...process.env, HOST: opts.host, AGENT: name, MOVER: opts.mover,
-            COORDINATION_ENABLED: String(config.coordination), BENCHMARK_CONTINUOUS: 'true',
-            BENCHMARK_DEADLINE_MS: String(deadlineAt),
-            ...(isLlm ? { LLM_MODE: 'json', ...(opts.ablation ? { LLM_DELIVERY_EVACUATION: String(ablationRound.evacuationEnabled) } : {}) } : {}) },
+          env: benchmarkAgentEnv(process.env, { host: opts.host, name, mover: opts.mover,
+            coordination: config.coordination, deadlineAt,
+            evacuation: opts.ablation ? ablationRound?.evacuationEnabled ?? null : null }),
         });
       }
       record.completedWindow = await waitWindow(opts.durationSec * 1000, signal);

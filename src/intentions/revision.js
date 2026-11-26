@@ -40,3 +40,29 @@ export function reconsider(current, options, margin = 1.2, { minGain, deliveryPr
   return best.utility > 0 && (stillValid.utility <= 0 || better)
     ? { next: best, reason: 'replaced' } : { next: stillValid, reason: 'continued' };
 }
+
+/**
+ * After its pickup, a trip is a delivery to its own tile: its parcel is no
+ * longer free, so no pickup option stands for it any more, and it would
+ * otherwise be weighed at the value it had when it started and lose to the
+ * very delivery it is about to make.
+ *
+ * When the options hold the delivery to the trip's tile, the trip takes that
+ * option's place and value. When they hold the delivery to another tile only
+ * (the one listed is the best from here, and the trip's own tile may be
+ * cooling down or just tied with it), the trip is added at that delivery's
+ * value, so that it is replaced only for a real gain.
+ * @param {import('../types.js').Option} active
+ * @param {import('../types.js').Option[]} options
+ * @param {boolean} carried  whether the agent carries the trip's parcel
+ * @returns {import('../types.js').Option[]}
+ */
+export function tripAsDelivery(active, options, carried) {
+  if (!carried || active.type !== 'pickup' || active.deliverX === undefined || active.deliverY === undefined) return options;
+  const own = `deliver:${active.deliverX},${active.deliverY}`;
+  if (options.some(o => o.id === own)) {
+    return options.map(o => o.id === own ? { ...active, utility: o.utility, priority: o.priority } : o);
+  }
+  const delivery = options.find(o => o.type === 'deliver');
+  return delivery ? [...options, { ...active, utility: delivery.utility, priority: 0 }] : options;
+}

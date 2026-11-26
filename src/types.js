@@ -150,7 +150,7 @@
  * @property {string} host
  * @property {string | undefined} token
  * @property {string} name
- * @property {'astar' | 'pddl'} mover
+ * @property {'disabled' | 'online'} planner  whether the Plan Library asks the online PDDL planner
  * @property {number} replaceMargin    a new option must beat the current one by this factor
  * @property {number} minCommitMs     minimum commitment before soft switching
  * @property {number} failedGoalCooldownMs  delay before retrying failed goals
@@ -160,11 +160,11 @@
  * @property {number} maxMoveRetries
  * @property {number} [congestionTimeoutMs]
  * @property {number} [congestionRetryMs]
- * @property {number} pddlTimeoutMs
- * @property {'off' | 'pddl'} taskPlanner  whether the PDDL task planner orders pickups and deliveries
- * @property {number} taskPlannerMaxParcels  the most free parcels in one task problem
- * @property {number} taskPlannerTimeoutMs  how long to wait for a task plan
- * @property {'always' | 'better'} taskPlannerFollow  whether every valid task plan is carried out, or only one worth at least the agent's own choice
+ * @property {number} pddlTimeoutMs  how long to wait for the online solver
+ * @property {number} pddlBreakerFailures  failed solver calls in a row before the solver is skipped
+ * @property {number} pddlBreakerCooldownMs  how long the solver is skipped after that
+ * @property {number} pddlMaxConcurrent  the most solver requests running at once
+ * @property {number} planArchiveSize  the most plans the Plan Library keeps
  * @property {number} actionTimeoutMs
  * @property {'baseline' | 'net_gain'} optionStrategy  how pickups are weighed against delivering
  * @property {number} minNetGain  with net_gain, the fewest extra points a switch of goal must earn
@@ -206,6 +206,8 @@
  * @property {number} utility     expected reward on delivery; under net_gain, minus the value of the time taken
  * @property {-1 | 0 | 1} priority
  * @property {string} [parcelId]  for 'pickup'
+ * @property {number} [deliverX]  for 'pickup': the delivery tile its trip ends on
+ * @property {number} [deliverY]
  */
 
 /**
@@ -221,6 +223,39 @@
  * @property {(x: number, y: number) => boolean} [forbidden] tiles ruled out by directives
  * @property {boolean} [ignoreTemporary] diagnostics only; ignore transient blocks/refusals (NEVER for execution)
  * @property {boolean} [ignoreCrates] treat crates as absent, for optimistic distances
+ */
+
+/**
+ * What one plan must achieve. A trip picks the parcel up on `parcelAt` and
+ * delivers it on `deliverAt`; a delivery puts down what the agent carries on
+ * `deliverAt`; a pickup only picks the parcel up (the LLM agent's tool).
+ * @typedef {{ kind: 'trip', parcelAt: Position, deliverAt: Position }
+ *   | { kind: 'deliver', deliverAt: Position }
+ *   | { kind: 'pickup', parcelAt: Position }} PlanGoal
+ */
+
+/**
+ * One step of a checked plan.
+ * @typedef {{ action: 'move', dir: Direction } | { action: 'pickup' } | { action: 'putdown' }} PlanStep
+ */
+
+/**
+ * A plan that passed the check, with the tiles it walks through: path[0] is
+ * the tile it starts on, and each move adds the tile it reaches.
+ * @typedef {{ steps: PlanStep[], path: Position[] }} DecodedPlan
+ */
+
+/**
+ * A PDDL problem for one intention, with what is needed to check its plan.
+ * @typedef {Object} ProblemSpec
+ * @property {string} domain
+ * @property {string} problem
+ * @property {Position} from         the tile the agent starts on
+ * @property {PlanGoal} goal
+ * @property {number} carried        how many parcels the agent carries at the start
+ * @property {Set<string>} edges     'x,y,dir' for every move the problem allows
+ * @property {Set<TileKey>} deliveries the delivery tiles in the problem
+ * @property {number} tiles          how many tiles the problem has
  */
 
 export {};

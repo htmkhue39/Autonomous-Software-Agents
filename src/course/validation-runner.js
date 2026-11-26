@@ -106,7 +106,7 @@ export async function runCourseValidation(opts,signal) {
       for(const name of def.agents){
         const isLlm=name==='milktea';
         const useStdin=isLlm && scenario==='objective_replace';
-        const env={...process.env,HOST:opts.host,AGENT:name,MOVER:def.mover,
+        const env={...process.env,HOST:opts.host,AGENT:name,MOVER:def.mover,PLANNER:def.mover==='pddl'?'online':'disabled',
           COORDINATION_ENABLED:String(def.coordination),
           ...(isLlm?{LLM_MODE:'json',LLM_PROVIDER:'ollama',LLM_DELIVERY_EVACUATION:String(def.coordination),
             LLM_MAX_RUN_MS:String(maxMs),LLM_OBJECTIVE_SOURCE:useStdin?'stdin':'cli',

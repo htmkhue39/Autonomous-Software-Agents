@@ -1,7 +1,7 @@
 // @ts-nocheck -- in-memory SDK bus intentionally implements only the required chat surface.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { encodeMessage, decodeMessage, PREFIX } from '../src/coordination/protocol.js';
+import { encodeMessage, decodeMessage, PREFIX, isSharedParcel } from '../src/coordination/protocol.js';
 import { CoordinationController } from '../src/coordination/controller.js';
 import { Beliefs } from '../src/beliefs/index.js';
 import { tilesFromRows } from './helpers.js';
@@ -256,4 +256,10 @@ test('repeated old parcel reports do not overwrite newer empty observations', ()
     w.bubble.shareBeliefs(); // same old direct sighting, with an accurate ageMs
     assert.equal(w.milkteaBeliefs.parcels.get('p42', w.milkteaBeliefs.now()), undefined);
   } finally { w.stop(); }
+});
+
+test('shared parcels on maps wider than 1000 tiles are accepted', () => {
+  assert.equal(isSharedParcel({ id: 'p', x: 1500, y: 2000, reward: 10, ageMs: 0 }), true);
+  assert.equal(isSharedParcel({ id: 'p', x: -1, y: 0, reward: 10, ageMs: 0 }), false);
+  assert.equal(isSharedParcel({ id: 'p', x: 1.5, y: 0, reward: 10, ageMs: 0 }), false);
 });

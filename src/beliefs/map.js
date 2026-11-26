@@ -53,6 +53,19 @@ export class GridMap {
    * delivery tile at all.
    */
   get doubleDelivery() { return this.#doubleDelivery; }
+
+  #doorsLocked = false;
+  /**
+   * Whether door tiles ('7') are closed to the agent. With the 'keys-doors'
+   * plugin, entering a door takes a key, which crossing it uses up; the
+   * beliefs lock the doors while the agent has no key. Without the plugin a
+   * '7' tile is an ordinary tile and this stays false.
+   */
+  get doorsLocked() { return this.#doorsLocked; }
+  set doorsLocked(locked) {
+    if (locked !== this.#doorsLocked) this.#sustainable = null;
+    this.#doorsLocked = locked;
+  }
   set doubleDelivery(on) {
     if (on !== this.#doubleDelivery) this.#sustainable = null;
     this.#doubleDelivery = on;
@@ -196,6 +209,8 @@ export class GridMap {
   isWalkable(x, y, now, { ignoreTemporary = false } = {}) {
     const type = this.typeAt(x, y);
     if (type === undefined || type === '0') return false;
+    // A locked door is as closed as a wall, for diagnostics too.
+    if (type === '7' && this.#doorsLocked) return false;
     return ignoreTemporary || (this.#blockedUntil.get(key(x, y)) ?? -Infinity) <= now;
   }
 

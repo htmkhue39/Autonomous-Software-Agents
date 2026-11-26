@@ -20,9 +20,10 @@ export function loadConfig(env) {
     host: env.HOST ?? 'http://localhost:8080',
     token: env[`TOKEN_${agent.toUpperCase()}`] || undefined,
     name: agent,
-    // The external planner is the default, because the course requires it when
-    // an intention is activated. MOVER=astar turns it off for quick local runs.
-    mover: env.MOVER === 'astar' ? 'astar' : 'pddl',
+    // The online PDDL planner is on by default, because the course asks for the
+    // planner to be called when an intention is activated; the agent never
+    // waits for it (see src/plans/library.js). PLANNER=disabled turns it off.
+    planner: planner(env),
     replaceMargin: num('REPLACE_MARGIN', 1.2),                 // a new option must be 20% better to replace the current one
     minCommitMs: num('MIN_COMMIT_MS', 6000),                   // the shortest time a non-urgent goal is kept before a soft switch
     failedGoalCooldownMs: num('FAILED_GOAL_COOLDOWN_MS', 10_000), // how long a failed goal waits before it is tried again
@@ -32,42 +33,31 @@ export function loadConfig(env) {
     maxMoveRetries: num('MAX_MOVE_RETRIES', 3),
     congestionTimeoutMs: num('NAV_CONGESTION_TIMEOUT_MS', 3500), // how long to wait behind another agent before giving up
     congestionRetryMs: num('NAV_CONGESTION_RETRY_MS', 180),    // how often to look again while waiting behind another agent
-    pddlTimeoutMs: num('PDDL_TIMEOUT_MS', 5000),
+    pddlTimeoutMs: num('PDDL_TIMEOUT_MS', 10_000),              // how long to wait for the online solver; it took 3 to 7 s in our tests
+    pddlBreakerFailures: Math.floor(num('PDDL_BREAKER_FAILURES', 3)), // failed solver calls in a row before the solver is skipped for a while
+    pddlBreakerCooldownMs: num('PDDL_BREAKER_COOLDOWN_MS', 60_000), // how long the solver is skipped after that
+    pddlMaxConcurrent: Math.floor(num('PDDL_MAX_CONCURRENT', 2)), // the most solver requests running at once, timed-out ones included
+    planArchiveSize: Math.floor(num('PLAN_ARCHIVE_SIZE', 500)),  // the most plans the Plan Library keeps
     actionTimeoutMs: num('ACTION_TIMEOUT_MS', 8000),           // how long an SDK action may take before its outcome counts as unknown
     optionStrategy: strategy(env),                             // how pickups are weighed against delivering what is carried
     minNetGain: num('MIN_NET_GAIN', 1),                        // with net_gain: the fewest extra points a switch of goal must earn
     timeValuePerS: timeValue(env),                             // with net_gain: points one second is worth; null learns it from the score
     deliveryProtection: atLeastZero(env, 'DELIVERY_PROTECTION', 0), // with net_gain: the gain above which a pickup gives way to delivering
-    taskPlanner: taskPlanner(env),                             // 'pddl' asks the PDDL task planner for the order of pickups and deliveries
-    taskPlannerMaxParcels: Math.floor(num('TASK_PLANNER_MAX_PARCELS', 5)), // the most free parcels in one task problem, the nearest first
-    taskPlannerTimeoutMs: num('TASK_PLANNER_TIMEOUT_MS', 10_000), // how long to wait for a task plan; the online solver takes about 6-7 s
-    taskPlannerFollow: taskPlannerFollow(env),                 // 'always' carries out every valid task plan; 'better' only one worth at least the agent's own choice
   };
 }
 
 /**
- * TASK_PLANNER_FOLLOW is 'always' unless it is set to 'better'.
+ * PLANNER is 'online' or 'disabled'. When it is unset, the older MOVER is
+ * read instead, so that existing scripts keep working: MOVER=astar turns the
+ * planner off and anything else leaves it on.
  * @param {Record<string, string | undefined>} env
- * @returns {'always' | 'better'}
+ * @returns {'disabled' | 'online'}
  */
-function taskPlannerFollow(env) {
-  const raw = env.TASK_PLANNER_FOLLOW;
-  if (raw === undefined || raw === '' || raw === 'always') return 'always';
-  if (raw === 'better') return 'better';
-  throw new Error(`TASK_PLANNER_FOLLOW must be always or better, got '${raw}'`);
-}
-
-/**
- * TASK_PLANNER is 'off' unless it is set to 'pddl', so that the agent keeps
- * its usual choices until the task planner is turned on.
- * @param {Record<string, string | undefined>} env
- * @returns {'off' | 'pddl'}
- */
-function taskPlanner(env) {
-  const raw = env.TASK_PLANNER;
-  if (raw === undefined || raw === '' || raw === 'off') return 'off';
-  if (raw === 'pddl') return 'pddl';
-  throw new Error(`TASK_PLANNER must be off or pddl, got '${raw}'`);
+function planner(env) {
+  const raw = env.PLANNER;
+  if (raw === undefined || raw === '') return env.MOVER === 'astar' ? 'disabled' : 'online';
+  if (raw === 'disabled' || raw === 'online') return raw;
+  throw new Error(`PLANNER must be disabled or online, got '${raw}'`);
 }
 
 /**

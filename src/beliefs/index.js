@@ -36,6 +36,10 @@ export class Beliefs {
    */
   constructor({ now = Date.now, agentTtlMs, blockedTtlMs, maxBlockedMs }) {
     this.clock = new GameClock(now);
+    /** How many sensing updates came from the server, so that a decision can wait for a fresh one. */
+    this.sensings = 0;
+    /** How many door keys the agent holds (the 'keys-doors' plugin). */
+    this.keys = 0;
     this.agentTtlMs = agentTtlMs;
     this.blockedTtlMs = blockedTtlMs;
     this.maxBlockedMs = maxBlockedMs;
@@ -113,6 +117,7 @@ export class Beliefs {
     this.clock.setFrameMs(config.CLOCK);
     this.parcels.decayMs = decayIntervalMs(config.GAME.parcels.decaying_event, config.CLOCK);
     if (this.map) this.map.doubleDelivery = this.#doubleDelivery();
+    this.#lockDoors();
     this.#applyTimings();
     this.#changed();
   }
@@ -128,6 +133,7 @@ export class Beliefs {
     const height = Math.max(...tiles.map(t => t.y)) + 1;
     this.map = new GridMap(width, height, tiles, { blockedTtlMs: this.blockedTtlMs, maxBlockedMs: this.maxBlockedMs });
     this.map.doubleDelivery = this.#doubleDelivery();
+    this.#lockDoors();
     this.#applyTimings();
     this.#changed();
   }
@@ -142,6 +148,8 @@ export class Beliefs {
   onYou(me) {
     this.rawMe = { x: me.x, y: me.y };
     this.me = { ...me, x: Math.round(me.x), y: Math.round(me.y) };
+    if (me.attributes !== undefined) this.keys = keysIn(me.attributes);
+    this.#lockDoors();
     this.#changed();
   }
 
@@ -150,12 +158,17 @@ export class Beliefs {
     if (frame !== undefined) this.clock.onFrame(frame);
     const now = this.now();
     const myId = self?.id ?? this.me?.id;
+    if (self?.attributes !== undefined) {
+      this.keys = keysIn(self.attributes);
+      this.#lockDoors();
+    }
     this.map?.markSeen(positions, now);
     this.map?.updateCrates(crates ?? [], positions);
     this.parcels.update(parcels, positions, now, myId);
     // An agent seen carrying a parcel collects parcels, so it competes for them.
     for (const { carriedBy } of parcels) if (carriedBy && carriedBy !== myId) this.agents.markCollector(carriedBy);
     this.agents.update(agents.filter(a => a.id !== myId), positions, now);
+    this.sensings++;
     this.#changed();
   }
 
@@ -229,6 +242,12 @@ export class Beliefs {
   }
 
   /** Whether the game runs the plugin that scores '9' tiles twice. */
+  /** With the 'keys-doors' plugin, doors are locked while the agent holds no key. */
+  #lockDoors() {
+    if (!this.map) return;
+    this.map.doorsLocked = (this.config?.GAME.plugins?.includes('keys-doors') ?? false) && this.keys <= 0;
+  }
+
   #doubleDelivery() {
     return this.config?.GAME.plugins?.includes('double-delivery') ?? false;
   }
@@ -236,4 +255,18 @@ export class Beliefs {
   #changed() {
     for (const listener of this.#listeners) listener();
   }
+}
+
+/**
+ * How many keys the agent's attributes say it holds. The server sends them
+ * as a list of `{ kind, value }`; an object of values is read too.
+ * @param {unknown} attributes
+ */
+function keysIn(attributes) {
+  if (Array.isArray(attributes)) {
+    const entry = attributes.find(a => a && typeof a === 'object' && /** @type {{ kind?: unknown }} */ (a).kind === 'key');
+    return Number(entry?.value ?? 0) || 0;
+  }
+  if (attributes && typeof attributes === 'object') return Number(/** @type {Record<string, unknown>} */ (attributes).key ?? 0) || 0;
+  return 0;
 }

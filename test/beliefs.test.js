@@ -245,3 +245,23 @@ test('waits on sensing are never shorter than a few frames of the server clock',
   beliefs.onConfig(config);
   assert.equal(beliefs.atLeastFrames(300, 3), 1500);
 });
+
+test('with keys and doors in the game, doors are locked while the agent has no key', () => {
+  const { beliefs } = makeBeliefs();
+  const config = serverConfig();
+  beliefs.onConfig({ ...config, GAME: { ...config.GAME, plugins: ['keys-doors'] } });
+  beliefs.onMap(2, 1, [...tiles(), { x: 3, y: 0, type: '7' }]);
+  beliefs.onYou({ ...ME, attributes: [{ kind: 'key', value: 0 }] });
+  assert.equal(beliefs.map?.isWalkable(3, 0, 0), false);
+  beliefs.onYou({ ...ME, attributes: [{ kind: 'key', value: 1 }] });
+  assert.equal(beliefs.map?.isWalkable(3, 0, 0), true);
+  // The key is read from sensing too, which carries the agent's own state.
+  beliefs.onSensing(sensing({ self: { ...ME, attributes: [{ kind: 'key', value: 0 }] } }));
+  assert.equal(beliefs.map?.isWalkable(3, 0, 0), false);
+});
+
+test('without the keys and doors plugin a door tile is an ordinary tile', () => {
+  const { beliefs } = readyBeliefs();
+  beliefs.onMap(2, 1, [...tiles(), { x: 3, y: 0, type: '7' }]);
+  assert.equal(beliefs.map?.isWalkable(3, 0, 0), true);
+});

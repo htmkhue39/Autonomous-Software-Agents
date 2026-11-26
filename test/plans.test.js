@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { stage1World } from './stage1-helpers.js';
 import { PlanLibrary } from '../src/plans/library.js';
+import { findPath } from '../src/planning/astar.js';
 
 test('predefined pickup and delivery plans execute and revise beliefs', async () => {
   const { beliefs, plans, events } = stage1World();
@@ -38,36 +39,6 @@ test('refused move marks a failed edge and avoids unsafe rapid retry', async () 
   const result = await w.movement.moveTo({ x: 0, y: 0 }, { stopped: false });
   assert.equal(result.status, 'failed');
   assert.equal(w.beliefs.map.neighbors(3, 0, w.beliefs.now()).some(n => n.dir === 'left'), false);
-});
-
-test('PDDL mode calls external planner; fallback is explicit', async () => {
-  const events = [];
-  let calls = 0;
-  const w = stage1World({ mode: 'pddl', solve: async () => { calls++; throw Error('unavailable'); }, log: event => events.push(event) });
-  const result = await w.movement.moveTo({ x: 1, y: 0 }, { stopped: false });
-  assert.equal(result.status, 'completed');
-  assert.equal(calls, 1);
-  assert.ok(events.includes('pddl_failure'));
-  assert.ok(events.includes('planner_fallback'));
-});
-
-test('PDDL-backed plan executes external solver moves without fallback', async () => {
-  const events = [];
-  let calls = 0;
-  const w = stage1World({
-    mode: 'pddl',
-    solve: async () => { calls++; return [
-      { action: 'move_left', args: ['t3_0', 't2_0'] },
-      { action: 'move_left', args: ['t2_0', 't1_0'] },
-    ]; },
-    log: event => events.push(event),
-  });
-  const result = await w.movement.moveTo({ x: 1, y: 0 }, { stopped: false });
-  assert.equal(result.status, 'completed');
-  assert.equal(calls, 1);
-  assert.ok(events.includes('pddl_success'));
-  assert.equal(events.includes('planner_fallback'), false);
-  assert.equal(w.beliefs.me.x, 1);
 });
 
 test('ambiguous move result is not retried by movement runner', async () => {
@@ -163,21 +134,66 @@ test('the route is shortened as soon as a blocking agent moves away', async () =
   assert.equal(moves, 6);
 });
 
-test('in PDDL mode the external planner runs once and replans use A*', async () => {
-  const logged = [];
-  let calls = 0;
-  const w = stage1World({
-    rows: ['33333', '33333'], x: 4, mode: 'pddl',
-    solve: async () => { calls++; return ['(move_left t4_0 t3_0)', '(move_left t3_0 t2_0)', '(move_left t2_0 t1_0)', '(move_left t1_0 t0_0)']; },
-    log: (type, details) => logged.push({ type, ...details }),
-  });
-  w.send([], [{ x: 1, y: 0 }]);
-  const move = w.client.move;
-  let moves = 0;
-  w.client.move = async dir => { const result = await move(dir); if (++moves === 1) otherAgent(w, { x: 1, y: 0 }); return result; };
-  const result = await w.movement.moveTo({ x: 0, y: 0 }, { stopped: false });
+/** The moves the agent sent, in order. */
+const sentMoves = w => w.events.filter(e => e.action === 'move').map(e => e.dir);
+
+/**
+ * A shortest route on an open grid from `from` to `to` that differs from the
+ * one A* would take, so that a test can tell which of the two was followed.
+ */
+function otherShortestRoute(w, from, to) {
+  const astar = findPath(w.beliefs.map, from, to, { now: 0 }).join();
+  const horizontal = Array(Math.abs(to.x - from.x)).fill(to.x < from.x ? 'left' : 'right');
+  const vertical = Array(Math.abs(to.y - from.y)).fill(to.y > from.y ? 'up' : 'down');
+  // Every place the vertical moves can go among the horizontal ones.
+  for (let i = 0; i <= horizontal.length; i++) {
+    const route = [...horizontal.slice(0, i), ...vertical, ...horizontal.slice(i)];
+    if (route.join() !== astar) return route;
+  }
+  throw new Error('No other shortest route');
+}
+
+test('moveTo follows a route it is given instead of computing one', async () => {
+  const w = stage1World({ rows: ['3333', '2333'], x: 2 });
+  const given = otherShortestRoute(w, { x: 2, y: 0 }, { x: 0, y: 1 });
+  const result = await w.movement.moveTo({ x: 0, y: 1 }, { stopped: false }, { route: given });
   assert.equal(result.status, 'completed');
-  assert.equal(calls, 1);
-  assert.equal(logged.filter(e => e.type === 'pddl_call').length, 1);
-  assert.equal(logged.find(e => e.type === 'replan')?.planner, 'astar');
+  assert.deepEqual(sentMoves(w), given);
+});
+
+test('moveTo switches to the route takeRoute returns', async () => {
+  // Three rows, so that after any first move there is still more than one shortest route.
+  const w = stage1World({ rows: ['3333', '3333', '2333'], x: 3 });
+  let asked = 0;
+  /** @type {string[] | null} */
+  let handed = null;
+  // Nothing for the first move; then, once, another shortest route from where the agent stands.
+  const takeRoute = () => {
+    if (++asked !== 2) return null;
+    handed = otherShortestRoute(w, w.beliefs.me, { x: 0, y: 2 });
+    return handed;
+  };
+  const result = await w.movement.moveTo({ x: 0, y: 2 }, { stopped: false }, { takeRoute });
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(sentMoves(w).slice(1), handed);
+});
+
+test('a given route that becomes blocked is replaced by A*', async () => {
+  const w = stage1World({ rows: ['3333', '2333'], x: 2 });
+  w.beliefs.onSensing({ positions: [], agents: [{ id: 'o', name: 'other', x: 2, y: 1, score: 0 }], parcels: [], crates: [] });
+  const result = await w.movement.moveTo({ x: 0, y: 1 }, { stopped: false }, { route: ['up', 'left', 'left'] });
+  assert.equal(result.status, 'completed');
+  assert.notEqual(sentMoves(w)[0], 'up');
+  assert.equal(w.beliefs.me.x, 0);
+  assert.equal(w.beliefs.me.y, 1);
+});
+
+test('moveTo says when it replaces a route it was given', async () => {
+  // A route of 5 moves where 3 are enough: A* replaces it at once as shorter.
+  const w = stage1World({ rows: ['3333', '2333'], x: 2 });
+  const replaced = [];
+  const result = await w.movement.moveTo({ x: 0, y: 1 }, { stopped: false },
+    { route: ['left', 'up', 'right', 'left', 'left'], onReplaced: reason => replaced.push(reason) });
+  assert.equal(result.status, 'completed');
+  assert.deepEqual(replaced, ['shorter']);
 });

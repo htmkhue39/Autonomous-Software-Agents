@@ -7,7 +7,7 @@ test('with an empty environment every setting has its default', () => {
     host: 'http://localhost:8080',
     token: undefined,
     name: 'bubble',
-    mover: 'pddl',
+    planner: 'online',
     replaceMargin: 1.2,
     minCommitMs: 6000,
     failedGoalCooldownMs: 10_000,
@@ -17,28 +17,17 @@ test('with an empty environment every setting has its default', () => {
     maxMoveRetries: 3,
     congestionTimeoutMs: 3500,
     congestionRetryMs: 180,
-    pddlTimeoutMs: 5000,
+    pddlTimeoutMs: 10000,
+    pddlBreakerFailures: 3,
+    pddlBreakerCooldownMs: 60000,
+    pddlMaxConcurrent: 2,
+    planArchiveSize: 500,
     actionTimeoutMs: 8000,
     optionStrategy: 'net_gain',
     minNetGain: 1,
     timeValuePerS: null,
     deliveryProtection: 0,
-    taskPlanner: 'off',
-    taskPlannerMaxParcels: 5,
-    taskPlannerTimeoutMs: 10_000,
-    taskPlannerFollow: 'always',
   });
-});
-
-test('TASK_PLANNER is off unless it is set to pddl, and its limits can be set', () => {
-  assert.equal(loadConfig({ TASK_PLANNER: 'pddl' }).taskPlanner, 'pddl');
-  assert.equal(loadConfig({ TASK_PLANNER: 'off' }).taskPlanner, 'off');
-  assert.throws(() => loadConfig({ TASK_PLANNER: 'llm' }), /TASK_PLANNER/);
-  const config = loadConfig({ TASK_PLANNER_MAX_PARCELS: '6', TASK_PLANNER_TIMEOUT_MS: '1500' });
-  assert.equal(config.taskPlannerMaxParcels, 6);
-  assert.equal(config.taskPlannerTimeoutMs, 1500);
-  assert.equal(loadConfig({ TASK_PLANNER_FOLLOW: 'better' }).taskPlannerFollow, 'better');
-  assert.throws(() => loadConfig({ TASK_PLANNER_FOLLOW: 'sometimes' }), /TASK_PLANNER_FOLLOW/);
 });
 
 test('AGENT picks the name and the matching TOKEN_<AGENT>', () => {
@@ -51,10 +40,23 @@ test('an empty token counts as no token', () => {
   assert.equal(loadConfig({ TOKEN_BUBBLE: '' }).token, undefined);
 });
 
-test('MOVER is pddl unless it is set to astar', () => {
-  assert.equal(loadConfig({ MOVER: 'pddl' }).mover, 'pddl');
-  assert.equal(loadConfig({ MOVER: 'other' }).mover, 'pddl');
-  assert.equal(loadConfig({ MOVER: 'astar' }).mover, 'astar');
+test('PLANNER is online by default and rejects other values', () => {
+  assert.equal(loadConfig({}).planner, 'online');
+  assert.equal(loadConfig({ PLANNER: 'disabled' }).planner, 'disabled');
+  assert.throws(() => loadConfig({ PLANNER: 'http' }), /PLANNER must be disabled or online/);
+});
+
+test('MOVER still works when PLANNER is unset', () => {
+  assert.equal(loadConfig({ MOVER: 'astar' }).planner, 'disabled');
+  assert.equal(loadConfig({ MOVER: 'pddl' }).planner, 'online');
+  assert.equal(loadConfig({ MOVER: 'astar', PLANNER: 'online' }).planner, 'online');
+});
+
+test('the breaker and archive settings can be overridden', () => {
+  const config = loadConfig({ PDDL_BREAKER_FAILURES: '5', PDDL_BREAKER_COOLDOWN_MS: '1000', PLAN_ARCHIVE_SIZE: '20' });
+  assert.equal(config.pddlBreakerFailures, 5);
+  assert.equal(config.pddlBreakerCooldownMs, 1000);
+  assert.equal(config.planArchiveSize, 20);
 });
 
 test('OPTION_STRATEGY and MIN_NET_GAIN are read and checked', () => {

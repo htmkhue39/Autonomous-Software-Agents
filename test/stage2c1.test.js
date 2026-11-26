@@ -241,3 +241,24 @@ test('LLM delivery can select statically reachable tile despite temporary occupa
   assert.equal(selected.type, 'deliver');
   assert.equal(selected.x, 0);
 });
+
+test('the target cooldown of the LLM tools lasts at least 40 moves in a slow game', async () => {
+  const w = decayWorld(400);
+  const config = structuredClone(w.beliefs.config);
+  config.GAME.player.movement_duration = 1000;
+  w.beliefs.onConfig(config);
+  const logs = [];
+  const tools = createGameTools({ beliefs: w.beliefs,
+    plans: { async execute() { return { status: 'failed', reason: 'Target no longer applicable' }; } },
+    log: (event, data) => logs.push({ event, ...data }) });
+  await tools.invoke({ name: 'collect_and_deliver', arguments: { parcel_id: 'p' } });
+  assert.equal(logs.find(e => e.event === 'llm_target_cooldown')?.cooldownMs, 40_000);
+});
+
+test('navigate_to checks coordinates against the map, not a fixed limit', async () => {
+  const w = decayWorld(40);
+  const tools = createGameTools({ beliefs: w.beliefs, plans: { async execute() { return { status: 'completed' }; } } });
+  const response = await tools.invoke({ name: 'navigate_to', arguments: { x: 1500, y: 0 } });
+  assert.equal(response.ok, false);
+  assert.match(response.error.message, /not walkable/);
+});

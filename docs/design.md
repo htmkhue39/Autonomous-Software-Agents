@@ -51,7 +51,7 @@ These paths exist in the current source tree and have unit tests:
 | Game clock / map / parcels / agents | `src/beliefs/` | Keep server-time estimation, parcel revision, refused-edge tracking and recent-agent blocking. |
 | Navigation | `src/planning/astar.js` | Keep shortest-path queries for utility estimates and fallback. |
 | Options and utility | `src/deliberation/options.js`, `utility.js` | Preserve as baseline; make alternative scoring strategies swappable later. |
-| SDK demos | `src/observe.js`, `follow-path.js`, `pickup-deliver.js` | Keep as diagnostics until end-to-end tests replace their purpose. |
+| SDK demos | `src/observe.js` | Kept to obtain a token. The Lab 1 demos `follow-path.js` and `pickup-deliver.js` were removed once the agent replaced them. |
 
 Stage 1 adds `src/index.js`, `src/plans/`, `src/intentions/`, and `src/planning/pddl/`. These components pass unit and fake-client tests. The second LLM agent remains outside Stage 1. The team verified real local game play and external PDDL calls for the previous Stage 1 build on 2026-11-11. Stage 1.1 modifications require a fresh local smoke test; see `stage1_test_report.md`.
 

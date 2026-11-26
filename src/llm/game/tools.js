@@ -12,7 +12,8 @@ import { selectDeliveryParking } from './evacuation.js';
 /** @type {import('../validation.js').SimpleSchema} */
 const empty = { type: 'object', additionalProperties: false, required: [], properties: {} };
 const coordinateSchema = { type: 'object', additionalProperties: false, required: ['x', 'y'],
-  properties: { x: { type: 'integer', minimum: 0, maximum: 999 }, y: { type: 'integer', minimum: 0, maximum: 999 } } };
+  // No upper limit here: navigate_to checks the tile against the map itself.
+  properties: { x: { type: 'integer', minimum: 0 }, y: { type: 'integer', minimum: 0 } } };
 
 /** @param {Beliefs} beliefs */
 function ready(beliefs) {
@@ -75,9 +76,11 @@ export function createGameTools({ beliefs, plans, progress, objectiveStatus, coo
     .slice(0, 3).map(p => ({ id: p.id, expectedDeliveryReward: p.expectedDeliveryReward }));
   /** @param {string} parcelId @param {string} reason */
   const cooldown = (parcelId, reason) => {
-    const until = beliefs.now() + 8000;
+    // 8 s in a normal game, but never fewer than 40 moves of this game.
+    const cooldownMs = beliefs.atLeastMoves(8000, 40);
+    const until = beliefs.now() + cooldownMs;
     failedTargetUntil.set(parcelId, until);
-    log('llm_target_cooldown', { parcelId, reason, cooldownMs: 8000 });
+    log('llm_target_cooldown', { parcelId, reason, cooldownMs });
   };
   const state = () => ({ ...gameObservation(beliefs, { coordination, cooldowns,
     objectiveProgress: objectiveStatus?.() ?? null }), progress: progress?.snapshot() ?? null });
@@ -313,7 +316,9 @@ export function createGameTools({ beliefs, plans, progress, objectiveStatus, coo
       const now = beliefs.now();
       const locations = map.spawnTiles().filter(p => p.x !== me.x || p.y !== me.y)
         .sort((a, b) => map.lastSeen(a.x, a.y) - map.lastSeen(b.x, b.y));
-      const leastSeen = locations.filter(p => now - map.lastSeen(p.x, p.y) > 2500);
+      // Unseen for 2.5 s in a normal game, but never fewer than 12 moves of this game.
+      const unseenMs = beliefs.atLeastMoves(2500, 12);
+      const leastSeen = locations.filter(p => now - map.lastSeen(p.x, p.y) > unseenMs);
       let destination = findNearest(map, me, leastSeen.slice(0, 24), { now, occupied: beliefs.agents.occupied(now) });
       if (!destination) destination = findNearest(map, me, locations.slice(0, 24), { now, occupied: beliefs.agents.occupied(now) });
       if (!destination) throw new ToolFailure('game_action_failed', 'No reachable exploration target');

@@ -32,7 +32,7 @@ The expected local address is `http://localhost:8080`. Open the game viewer if d
 cp .env.example .env
 ```
 
-Edit `.env` and set `HOST`, `TOKEN_BUBBLE`, `TOKEN_MILKTEA`, `MOVER`, `OLLAMA_MODEL`, and `LLM_MODE`. The two token values must refer to **distinct players** on the same game server. Do not copy the original ZIP's `.env` into a publicly shared directory.
+Edit `.env` and set `HOST`, `TOKEN_BUBBLE`, `TOKEN_MILKTEA`, `OLLAMA_MODEL`, and `LLM_MODE`. Set `PLANNER` only to override its default (`online`); the benchmark runner and the course validator set it for each run themselves. The two token values must refer to **distinct players** on the same game server. Do not copy the original ZIP's `.env` into a publicly shared directory.
 
 If you need fresh local tokens, `AGENT=bubble TOKEN_BUBBLE= npm run observe` (and similarly `AGENT=milktea TOKEN_MILKTEA= npm run observe`) prints a server-issued token. **Caution:** this legacy diagnostic script also tries movement and pickup, so run it only in your own throwaway local game. Prefer game-server-provided credential issuance if available. Store each token privately and reconnect using it to avoid duplicate player identities.
 
@@ -42,52 +42,53 @@ Install Ollama and make the model configured by `OLLAMA_MODEL` available. The mo
 
 ## 5. Manual agents
 
-**BDI standalone:**
+**BDI without the planner:**
 
 ```bash
-AGENT=bubble MOVER=astar npm start
+AGENT=bubble PLANNER=disabled npm start
 ```
 
-**BDI with external PDDL:**
+**BDI with the online PDDL planner (the default):**
 
 ```bash
-AGENT=bubble MOVER=pddl npm start
+AGENT=bubble npm start
 ```
 
-Inspect the agent JSONL logs/terminal for `pddl_call` and `pddl_success`. A `planner_fallback` to A* does not demonstrate a successful external PDDL call. The solver is reached through `@unitn-asa/pddl-client` and requires internet access.
-
-**BDI with the PDDL task planner:**
-
-```bash
-AGENT=bubble MOVER=astar TASK_PLANNER=pddl npm start
-```
-
-With two parcels or more involved, the agent asks the external solver for the order of pickups and deliveries, while A* still finds each walk. The settings are:
+Each pickup intention is a whole trip, as on page 12 of the course slides: walk to the parcel, pick it up, walk to the delivery tile, put it down. When an intention starts, the Plan Library looks for a plan in its archive. The archive keeps plans by the places they connect (the tile the agent starts on, the parcel's tile, the delivery tile, and how many parcels the agent carries), so a plan made once is used again whenever the same trip comes back. When the archive has no plan that still works, the agent starts walking at once with A* and asks the online solver in the background; it never waits for the solver. A plan that arrives while the agent is still on its path takes over the walk, and is archived either way. The solver is reached through `@unitn-asa/pddl-client` and requires internet access.
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `TASK_PLANNER` | `off` | `pddl` turns the task planner on; `off` keeps the agent's own choices |
-| `TASK_PLANNER_MAX_PARCELS` | `5` | the most free parcels in one task problem, the nearest first |
-| `TASK_PLANNER_FOLLOW` | `always` | `always` carries out every valid plan as the planner returned it; `better` only one worth at least the agent's own choice |
-| `TASK_PLANNER_TIMEOUT_MS` | `10000` | how long to wait for a plan before going on without it; the online solver took about 6-7 s per call in our tests |
+| `PLANNER` | `online` | `online` asks the course's online solver; `disabled` uses A* only. When unset, `MOVER=astar` means `disabled` and `MOVER=pddl` means `online`. |
+| `PDDL_TIMEOUT_MS` | `10000` | how long to wait for one solver call; the online solver took 3 to 7 s in our tests |
+| `PDDL_BREAKER_FAILURES` | `3` | failed solver calls in a row before the solver is skipped for a while |
+| `PDDL_BREAKER_COOLDOWN_MS` | `60000` | how long the solver is skipped; then one call is tried again |
+| `PDDL_MAX_CONCURRENT` | `2` | the most solver requests running at once; a request that timed out counts until it settles (60 s at most). A trip that comes again while its request runs waits for that request. |
+| `PLAN_ARCHIVE_SIZE` | `500` | the most plans the archive keeps; the least recently used is dropped first |
 
-Look for `pddl_task_call`, then `pddl_task_success` or `pddl_task_failure` (with `reason`), each with `durationMs`, and `pddl_task_choice`, which shows whether the plan was followed (`adopted`), what it was worth (`planFirstTrip`) against the agent's own choice (`netGainUtility`), and how many moves it takes (`planMoves`) against the fewest any order would take (`optimalMoves`). Intentions taken from the plan are logged with `source: 'pddl_task'`.
+What to look for in the logs:
+
+- `pddl_call`, then `pddl_success` (with `durationMs` and `actions`) or `pddl_failure` (with `reason`): one solver call.
+- `plan_archive_hit` and `plan_archive_miss`, with the `key`: whether the archive had a plan for the trip.
+- `pddl_plan_used`, with `from: 'archive'` or `'solver'`: a PDDL plan was handed to the walk. `pddl_plan_replaced`, with the `reason` (`blocked` or `shorter`): A* then took over from it. `pddl_plan_unused`, with the `reason` (`intention ended`, `walk finished` or `off the plan path`): a plan came but A* had already done the walk.
+- `pddl_breaker_open`, `pddl_breaker_half_open` and `pddl_breaker_closed`: the circuit breaker. A skipped call is logged as `planner_fallback`.
+
+A `planner_fallback` or a `pddl_plan_unused` does not show that a PDDL plan drove the agent. Count `pddl_plan_used` less `pddl_plan_replaced` for the walks a PDDL plan drove to the end.
 
 **LLM standalone:**
 
 ```bash
-AGENT=milktea MOVER=astar LLM_MODE=json npm run start:llm -- \
+AGENT=milktea PLANNER=disabled LLM_MODE=json npm run start:llm -- \
   --objective "Collect and deliver at least one parcel."
 ```
 
 **Two-agent cooperation:** use two terminals concurrently:
 
 ```bash
-AGENT=bubble MOVER=astar COORDINATION_ENABLED=true npm start
+AGENT=bubble PLANNER=disabled COORDINATION_ENABLED=true npm start
 ```
 
 ```bash
-AGENT=milktea MOVER=astar LLM_MODE=json COORDINATION_ENABLED=true \
+AGENT=milktea PLANNER=disabled LLM_MODE=json COORDINATION_ENABLED=true \
   npm run start:llm -- --objective "Deliver 3 parcels"
 ```
 

@@ -174,3 +174,14 @@ test("a '9' tile is a delivery tile worth twice only when the game doubles it", 
   assert.equal(map.deliveryMultiplier(1, 0), 2);
   assert.equal(map.deliveryMultiplier(0, 0), 1);
 });
+
+test("a door tile ('7') can only be entered while the doors are open", () => {
+  const map = mapFromRows(['373']);
+  assert.equal(map.isWalkable(1, 0, 0), true);
+  map.doorsLocked = true;
+  assert.equal(map.isWalkable(1, 0, 0), false);
+  assert.equal(map.isWalkable(1, 0, 0, { ignoreTemporary: true }), false);
+  assert.deepEqual(map.neighbors(0, 0, 0).map(n => n.dir), []);
+  map.doorsLocked = false;
+  assert.deepEqual(map.neighbors(0, 0, 0).map(n => n.dir), ['right']);
+});

@@ -22,11 +22,17 @@ import { decayIntervalMs } from '../beliefs/parcels.js';
  *   milliseconds and timeValue the agent's earning rate in points per
  *   millisecond (see EarningRate). Time spent on one trip could have earned
  *   points on another, so a long detour for a few points loses, even when
- *   parcels decay slowly. While carrying parcels, a pickup is offered only
- *   when its U beats delivering straight away by at least `minGain` points,
- *   and the BDI agent switches between intentions on the same rule (see
- *   reconsider). Delivering is always offered while carrying, even when its
- *   U is below zero, since not delivering would lose the whole load.
+ *   parcels decay slowly.
+ *   While carrying parcels, a pickup is offered only when its U beats
+ *   delivering first by at least `minGain` points. Delivering first means
+ *   delivering now and fetching the same parcels afterwards, since a parcel
+ *   does not go away while the agent delivers. The pickup the agent already
+ *   follows is always offered, but once delivering first wins, it is worth
+ *   less than delivering, so the agent stops it. The BDI agent switches
+ *   between intentions on the minGain rule as well (see reconsider).
+ *   The deliver option is worth only what it delivers, since a trip under
+ *   way is scored by it. Delivering is always offered while carrying, even
+ *   when its U is below zero, since not delivering would lose the whole load.
  *   Exploring ranks below every pickup and delivery.
  *   Under 'net_gain' a pickup also looks one stop ahead: it is worth the best
  *   of delivering after it, or picking up the parcels of one more tile first
@@ -198,6 +204,37 @@ export function listOptions(beliefs, { strategy = 'baseline', minGain = 1, timeV
     };
     const keepParcel = keep?.startsWith('pickup:') ? keep.slice('pickup:'.length) : null;
 
+    // Delivering first and fetching the same parcels afterwards is what a
+    // pickup made while carrying must beat. That walk starts on the delivery
+    // tile, so its distances are measured from there: with arrows, the way
+    // from the delivery tile to a parcel can be longer than the way back.
+    const fromDelivery = netGain && direct ? distancesThroughCrates(map, direct.target, paths) : null;
+    const delivered = direct ? direct.target.multiplier * rewardAt(carried, direct.tripMs) : 0;
+    const fullRoom = capacity === -1 ? Infinity : capacity;
+    /**
+     * What delivering first is worth, then fetching the parcels of `stops` in
+     * order with the room the delivery frees and delivering them too; or
+     * delivering now alone, if that is worth more. The later arrival lowers
+     * the chance of beating a rival to each parcel.
+     * @param {typeof tiles} stops
+     */
+    const deliverFirst = stops => {
+      if (!direct || !fromDelivery) return deliverNow;
+      let moves = direct.moves;
+      let at = fromDelivery;
+      /** @type {Load[]} */
+      const load = [];
+      for (const stop of stops) {
+        const leg = at.get(stop.k);
+        if (leg === undefined) return deliverNow;
+        moves += leg;
+        load.push(...takeFrom(stop, moves, fullRoom - load.length));
+        at = /** @type {Map<TileKey, number>} */ (distancesOf.get(stop.k));
+      }
+      const after = bestDelivery(load, at, moves, true);
+      return after ? Math.max(deliverNow, delivered + after.value) : deliverNow;
+    };
+
     for (const tile of tiles) {
       const moves = /** @type {number} */ (fromMe.get(tile.k));
       const distances = /** @type {Map<TileKey, number>} */ (distancesOf.get(tile.k));
@@ -206,7 +243,9 @@ export function listOptions(beliefs, { strategy = 'baseline', minGain = 1, timeV
       if (!single) continue;
       // Parcels that would reach the delivery tile worthless add nothing.
       if (netGain && rewardAt(taken.map(p => ({ ...p, chance: 1 })), single.tripMs) <= 0) continue;
-      let utility = single.value;
+      // Each way of doing this pickup: its value, and the stops it makes.
+      /** @type {{ value: number, stops: typeof tiles }[]} */
+      const ways = [{ value: single.value, stops: [tile] }];
       // One stop ahead: the parcels of another tile, then delivering.
       if (netGain && room - taken.length > 0) {
         for (const next of tiles) {
@@ -215,14 +254,26 @@ export function listOptions(beliefs, { strategy = 'baseline', minGain = 1, timeV
           if (between === undefined) continue;
           const load = [...carried, ...taken, ...takeFrom(next, moves + between, room - taken.length)];
           const pair = bestDelivery(load, /** @type {Map<TileKey, number>} */ (distancesOf.get(next.k)), moves + between, true);
-          if (pair && pair.value > utility) utility = pair.value;
+          if (pair) ways.push({ value: pair.value, stops: [tile, next] });
         }
       }
+      // While carrying, a way counts only when it beats delivering first and
+      // then making the same stops by at least minGain points.
+      const gains = ways.map(w => netGain && direct ? w.value - deliverFirst(w.stops) : Infinity);
+      const worth = Math.max(-Infinity, ...ways.filter((_, i) => gains[i] >= minGain).map(w => w.value));
+      // The current intention is always offered. When no way of it counts, it
+      // is worth what it gains over delivering first, counted on top of
+      // delivering now: below the deliver option once delivering first wins,
+      // so that the agent stops the detour.
+      const fallback = deliverNow + Math.max(...gains);
       // The current intention keeps its id while its parcel lies on this tile.
       const parcelId = tile.parcels.some(p => p.id === keepParcel) ? /** @type {string} */ (keepParcel) : tile.parcels[0].id;
       const id = `pickup:${parcelId}`;
-      if (netGain && direct && id !== keep && utility - deliverNow < minGain) continue;
-      options.push({ id, type: 'pickup', x: tile.x, y: tile.y, utility, priority: 0, parcelId });
+      if (worth === -Infinity && id !== keep) continue;
+      const utility = worth === -Infinity ? fallback : worth;
+      // The trip delivers where the direct trip from this tile is worth most.
+      options.push({ id, type: 'pickup', x: tile.x, y: tile.y, utility, priority: 0, parcelId,
+        deliverX: single.target.x, deliverY: single.target.y });
     }
   }
 
@@ -242,23 +293,6 @@ export function listOptions(beliefs, { strategy = 'baseline', minGain = 1, timeV
     ? exploreByValue(beliefs, fromMe, perMs, allowed)
     : exploreOldest(beliefs, paths, allowed);
   return explore && !excluded.has(explore.id) ? [...worthwhile, explore] : worthwhile;
-}
-
-/**
- * The delivery tiles the agent may deliver on now: those it can go on
- * playing from (see playableLoop), less those in `excluded`, such as tiles
- * that failed recently.
- * @param {Beliefs} beliefs
- * @param {ReadonlySet<string>} excluded  option ids, as deliverId gives them
- * @returns {Position[]}
- */
-export function usableDeliveryTiles(beliefs, excluded) {
-  const { map, me } = beliefs;
-  if (!map || !me) return [];
-  const loop = playableLoop(map, me, beliefs.now());
-  return map.deliveryTiles()
-    .filter(t => !loop || loop.deliveries.has(key(t.x, t.y)))
-    .filter(t => !excluded.has(deliverId(t.x, t.y)));
 }
 
 /**
